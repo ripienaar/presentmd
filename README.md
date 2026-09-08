@@ -245,6 +245,38 @@ what you want. A template is handed `heading`, `body`, `left`, `right`,
 `caption`, `cta`, `avatar`, `presenter`, `footer`, `contacts`, `presentation`
 and `slide`.
 
+## Claude Code skills
+
+Two skills for [Claude Code](https://claude.com/claude-code) ship as the
+`presentmd` plugin, one for writing a deck and one for writing a theme. Install
+them with:
+
+```
+/plugin marketplace add choria-io/agent-plugins
+/plugin install presentmd@choria
+```
+
+`/presentmd:presentation` builds a deck. It asks about the talk, the audience,
+how many minutes you have on stage, and the name, event and contacts a slide
+carries, then writes `presentation.yaml` and one markdown file per slide into a
+deck directory and renders it to check that every slide fits. It also takes a
+deck that already exists, to add slides to it or to restructure one.
+
+`/presentmd:theme` builds a theme. It asks what the talk should feel like, which
+ground and accent color, which fonts and what belongs on every slide, then
+writes `theme.yaml`, `theme.css` and the templates, renders a deck through them
+and looks at the slides.
+
+Both are also picked up on their own: asking for a deck, a talk, some slides, or
+for your brand colors on a presentation, reaches them without typing a name.
+
+Either skill can take the notes, README or design document you already have as
+the thing to turn into slides:
+
+```
+/presentmd:presentation turn DESIGN.md into a 20 minute talk for a team review
+```
+
 ## Live reload
 
 A page being served listens for a change and does the smallest thing that shows

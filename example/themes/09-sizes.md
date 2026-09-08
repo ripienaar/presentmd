@@ -1,6 +1,7 @@
 ---
 page_style: content
 caption: A theme that spells no rule for a step renders that slide at the normal size
+text_size: small
 notes: |
   A slide asks for a step by name and the theme decides what the step means, so
   a deck of slides at four sizes still looks like one deck.
