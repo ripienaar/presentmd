@@ -209,6 +209,40 @@ func TestEditorSaveWritesTheDeck(t *testing.T) {
 	}
 }
 
+// The browser holds the deck as JSON and hands it back, and a modification time
+// in nanoseconds is larger than the integer it holds exactly. The revision has
+// to survive that round trip: carried as a number it came back rounded, and
+// every save read as a file that had changed on disk.
+func TestEditorSaveSurvivesTheBrowsersJSON(t *testing.T) {
+	editor, _ := editorOn(t)
+
+	rec := ask(t, editor, http.MethodGet, "/api/deck?path=talk", nil)
+
+	// A map is what the browser holds: every number in it is a float64, the
+	// double a browser has.
+	var held map[string]any
+	decodeBody(t, rec, &held)
+
+	if _, ok := held["revision"].(string); !ok {
+		t.Fatalf("the revision crossed as %T, which a browser cannot hold exactly", held["revision"])
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"path":         "talk",
+		"presentation": held["presentation"],
+		"slides":       held["slides"],
+		"revision":     held["revision"],
+	})
+	if err != nil {
+		t.Fatalf("cannot encode the deck the browser holds: %v", err)
+	}
+
+	rec = ask(t, editor, http.MethodPost, "/api/save", json.RawMessage(body))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a save carrying the revision it opened answered %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 // A save carries the revision it opened, so a file something else wrote in the
 // meantime is reported rather than written over.
 func TestEditorSaveRefusesAStaleRevision(t *testing.T) {

@@ -244,11 +244,23 @@ button.icon { padding: 0 7px; font-size: 13px; text-transform: none; letter-spac
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px 14px 40px;
+  padding: 12px 14px 14px;
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
+
+/* The slide takes whatever the presentation section leaves, so the markdown box
+   grows with the window instead of leaving a strip of nothing above the deck. */
+#settingshost { flex: 0 0 auto; }
+#slidehost, .panel.slide, .panel.slide > .body-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.panel.slide textarea.md { flex: 1 1 auto; }
+#slidehost > .empty { flex: 0 0 auto; }
 
 .divider {
   background: var(--surface-2);
@@ -352,6 +364,7 @@ button.icon { padding: 0 7px; font-size: 13px; text-transform: none; letter-spac
 .rowacts { flex: 0 0 auto; display: flex; gap: 3px; opacity: 0; }
 .head:hover .rowacts, .panel.open .rowacts { opacity: 1; }
 .rowacts button { height: 22px; font-size: 11px; padding: 0 6px; }
+.rowacts .add { color: var(--accent); border-color: var(--accent-soft); }
 
 .body-wrap { padding: 2px 12px 12px 42px; }
 
@@ -463,8 +476,10 @@ button.icon { padding: 0 7px; font-size: 13px; text-transform: none; letter-spac
 }
 .notes-d textarea { margin-top: 7px; }
 
-/* open, the strip carries what the collapsed row's chips carry */
-.panel.slide.open > .head .chips { display: none; }
+/* the slide panel is always the slide the deck below is showing, so its head
+   opens nothing and the frontmatter strip under it carries what the slide is */
+.panel.slide > .head { cursor: default; }
+.panel.slide > .head:hover { background: none; }
 .panel:not(.open) .body-wrap { display: none; }
 
 .grid {
@@ -526,9 +541,6 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   color: var(--ink-3);
   font-weight: 400;
 }
-
-.addrow { display: flex; gap: 8px; align-items: center; padding: 2px 0 0; }
-.addrow .rule { flex: 1 1 auto; height: 1px; background: var(--rule); }
 
 .empty {
   border: 1px dashed var(--rule-2);
@@ -725,7 +737,10 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
 <div class="barpop" id="barpop" hidden></div>
 
 <div class="split">
-  <div class="editor" id="editor"></div>
+  <div class="editor" id="editor">
+    <div id="settingshost"></div>
+    <div id="slidehost"></div>
+  </div>
   <div class="divider" id="divider" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize editor and deck"></div>
   <div class="deck">
     <div class="deckbar">
@@ -759,7 +774,23 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
 const session = JSON.parse(document.getElementById('session').textContent);
 
 const PAGE_STYLES = ['title', 'section', 'content', 'columns', 'code', 'image', 'closing'];
-const SPLIT_STYLES = ['columns'];
+
+/* The styles whose markdown is not simply a heading and a body: what the box is
+   for, and what the page shows when it is left empty. A title page reads as an
+   editor with nothing in it otherwise, when what it says is up in the
+   presentation. */
+const STYLE_NOTES = {
+  title: {
+    ph: '# a heading, where the presentation title is not what this page should say',
+    hint: 'the title page is built from the Presentation section above: the title, subtitle, event, date and presenter. A heading here replaces the title, a body renders above it as a logo.'
+  },
+  closing: {
+    hint: 'the contacts come from the Presentation section above, with a heading and a body around them'
+  },
+  columns: {
+    hint: '--- on a line of its own divides the two columns'
+  }
+};
 
 /* The frontmatter of a slide, in the order the chips carry it. */
 const PROPS = [
@@ -776,12 +807,11 @@ const PROPS = [
 const REMEMBERED = ['presenter', 'contact_email', 'contact_web', 'contact_social', 'contact_social_network'];
 const COOKIE = 'presentmd_presenter';
 
-let deck = { path: session.deck, root: session.root, presentation: {}, slides: [], problems: [], revision: 0 };
+let deck = { path: session.deck, root: session.root, presentation: {}, slides: [], problems: [], revision: '0' };
 let markdown = '';
 let current = 0;
 let dirty = false;
 let settingsOpen = false;
-let openSlides = new Set();
 let draftTimer = null;
 
 const el = id => document.getElementById(id);
@@ -850,7 +880,6 @@ function adopt(loaded) {
   deck.problems = deck.problems || [];
   markdown = deck.markdown || '';
   current = 0;
-  openSlides = new Set(deck.slides.length ? [0] : []);
   settingsOpen = !deck.slides.length;
   dirty = false;
 
@@ -938,19 +967,32 @@ function showSlide(i) {
   } catch (err) { /* the frame is still loading */ }
 }
 
-/* readSlide is the other direction: clicking through the deck moves the editor
+/* Which slide the frame is on. Reveal is asked first: moving with the keys
+   writes the hash through replaceState, which fires no hashchange, so the hash
+   alone misses every move a person makes inside the deck. It is the fallback
+   for the moment before reveal has initialized. */
+function frameSlide() {
+  const win = preview().contentWindow;
+
+  if (win.Reveal && typeof win.Reveal.getIndices === 'function') {
+    const at = win.Reveal.getIndices().h;
+    if (typeof at === 'number') return at;
+  }
+
+  const hash = win.location.hash.match(/^#\/(\d+)/);
+
+  return hash ? Number(hash[1]) : null;
+}
+
+/* readSlide is the other direction: moving through the deck moves the editor
    onto the slide being looked at. */
 function readSlide() {
   try {
-    const hash = preview().contentWindow.location.hash.match(/^#\/(\d+)/);
-    if (!hash) return;
-
-    const i = Number(hash[1]);
-    if (i === current || i >= deck.slides.length) return;
+    const i = frameSlide();
+    if (i === null || i === current || i >= deck.slides.length) return;
 
     current = i;
-    paintBar();
-    markCurrent();
+    focusSlide();
   } catch (err) { /* the frame is still loading */ }
 }
 
@@ -1155,36 +1197,27 @@ function settingsPanel() {
 }
 
 function slidePanel(s, i) {
-  const open = openSlides.has(i);
   const t = slideTitle(s);
-  const chips = [];
+  const note = STYLE_NOTES[s.page_style] || {};
 
-  if (!s.page_style) chips.push('<span class="chip warn">no page_style</span>');
-  else chips.push('<span class="chip style">' + esc(s.page_style) + '</span>');
-
-  if (s.text_size) chips.push('<span class="chip">' + esc(s.text_size) + '</span>');
-  if (s.transition) chips.push('<span class="chip">' + esc(s.transition) + '</span>');
-  if (s.background) chips.push('<span class="chip">background</span>');
-  if (s.notes) chips.push('<span class="chip">notes</span>');
-
-  return '<section class="panel slide' + (open ? ' open' : '') + (i === current ? ' current' : '') + '" data-slide="' + i + '">' +
-    '<div class="head" tabindex="0" role="button" aria-expanded="' + open + '">' +
-      '<span class="twist">▶</span>' +
+  return '<section class="panel slide open current" data-slide="' + i + '">' +
+    '<div class="head">' +
       '<span class="num">' + String(i + 1).padStart(2, '0') + '</span>' +
       '<span class="slidetitle' + (t.untitled ? ' untitled' : '') + '" data-title>' + esc(t.text) + '</span>' +
-      '<span class="chips">' + chips.join('') + '</span>' +
       '<span class="rowacts">' +
-        '<button class="icon" data-act="up" title="Move up">↑</button>' +
-        '<button class="icon" data-act="down" title="Move down">↓</button>' +
-        '<button class="icon" data-act="del" title="Delete slide">✕</button>' +
+        '<button class="icon" data-act="up" title="Move this slide up">\u2191</button>' +
+        '<button class="icon" data-act="down" title="Move this slide down">\u2193</button>' +
+        '<button class="icon" data-act="del" title="Delete this slide">\u2715</button>' +
+        '<button class="icon add" data-act="add" title="Add a slide after this one">+</button>' +
       '</span>' +
     '</div>' +
     '<div class="body-wrap">' +
       '<div class="props">' + propsHTML(s) + '</div>' +
-      '<textarea data-k="markdown" class="md" spellcheck="true" placeholder="# Heading&#10;&#10;The body, as markdown.">' + esc(s.markdown) + '</textarea>' +
-      (SPLIT_STYLES.includes(s.page_style) ? '<div class="hint">--- on a line of its own divides the two columns</div>' : '') +
+      '<textarea data-k="markdown" class="md" spellcheck="true" placeholder="' +
+        (note.ph ? attr(note.ph) : '# Heading&#10;&#10;The body, as markdown.') + '">' + esc(s.markdown) + '</textarea>' +
+      (note.hint ? '<div class="hint">' + esc(note.hint) + '</div>' : '') +
       '<details class="notes-d">' +
-        '<summary>Notes<span class="peek">' + esc(s.notes ? s.notes.replace(/\s+/g, ' ').slice(0, 90) : 'nothing yet — the speaker view, never the audience') + '</span></summary>' +
+        '<summary>Notes<span class="peek">' + esc(s.notes ? s.notes.replace(/\s+/g, ' ').slice(0, 90) : 'nothing yet \u2014 the speaker view, never the audience') + '</span></summary>' +
         '<textarea data-k="notes" class="notes" spellcheck="true" placeholder="what to say on this slide">' + esc(s.notes) + '</textarea>' +
       '</details>' +
     '</div>' +
@@ -1192,22 +1225,19 @@ function slidePanel(s, i) {
 }
 
 function paintEditor() {
-  const parts = [settingsPanel()];
-
-  if (!deck.slides.length) {
-    parts.push('<div class="empty"><p>No slides in <span class="path">presentation.md</span> yet.</p>' +
-      '<button class="primary" data-act="add">Add the first slide</button></div>');
-  } else {
-    deck.slides.forEach((s, i) => parts.push(slidePanel(s, i)));
-    parts.push('<div class="addrow"><span class="rule"></span>' +
-      '<button data-act="add">+ Add slide</button><span class="rule"></span></div>');
-  }
-
-  el('editor').innerHTML = parts.join('');
+  el('settingshost').innerHTML = settingsPanel();
+  paintSlide();
 }
 
-function markCurrent() {
-  document.querySelectorAll('.panel.slide').forEach((panel, i) => panel.classList.toggle('current', i === current));
+/* The editor holds one slide: the one the deck below is showing. Moving through
+   the deck moves this panel, so the top of the window is the presentation and
+   the page being looked at, and nothing else. */
+function paintSlide() {
+  const s = deck.slides[current];
+
+  el('slidehost').innerHTML = s ? slidePanel(s, current) :
+    '<div class="empty"><p>No slides in <span class="path">presentation.md</span> yet.</p>' +
+    '<button class="primary" data-act="add">Add the first slide</button></div>';
 }
 
 function newSlide() {
@@ -1348,24 +1378,22 @@ el('editor').addEventListener('click', e => {
     const i = panel ? Number(panel.dataset.slide) : -1;
 
     if (act.dataset.act === 'add') {
-      deck.slides.push(newSlide());
-      current = deck.slides.length - 1;
-      openSlides = new Set([current]);
+      const at = deck.slides.length ? current + 1 : 0;
+
+      deck.slides.splice(at, 0, newSlide());
+      current = at;
     } else if (act.dataset.act === 'del') {
       deck.slides.splice(i, 1);
       current = Math.max(0, Math.min(current, deck.slides.length - 1));
-      openSlides.delete(i);
     } else if (act.dataset.act === 'up' && i > 0) {
       deck.slides.splice(i - 1, 0, deck.slides.splice(i, 1)[0]);
       current = i - 1;
-      openSlides = new Set([current]);
     } else if (act.dataset.act === 'down' && i < deck.slides.length - 1) {
       deck.slides.splice(i + 1, 0, deck.slides.splice(i, 1)[0]);
       current = i + 1;
-      openSlides = new Set([current]);
     }
 
-    paintEditor();
+    paintSlide();
     paintBar();
     touch();
 
@@ -1376,25 +1404,11 @@ el('editor').addEventListener('click', e => {
   if (!head) return;
 
   const owner = head.parentElement;
+  if (owner.dataset.panel !== 'settings') return;
 
-  if (owner.dataset.panel === 'settings') {
-    settingsOpen = !settingsOpen;
-    owner.classList.toggle('open', settingsOpen);
-    head.setAttribute('aria-expanded', settingsOpen);
-
-    return;
-  }
-
-  const i = Number(owner.dataset.slide);
-  const open = !openSlides.has(i);
-
-  if (open) openSlides.add(i); else openSlides.delete(i);
-
-  owner.classList.toggle('open', open);
-  head.setAttribute('aria-expanded', open);
-  current = i;
-  markCurrent();
-  paintBar();
+  settingsOpen = !settingsOpen;
+  owner.classList.toggle('open', settingsOpen);
+  head.setAttribute('aria-expanded', settingsOpen);
 });
 
 el('editor').addEventListener('keydown', e => {
@@ -1421,10 +1435,7 @@ el('editor').addEventListener('input', e => {
     return;
   }
 
-  const i = Number(panel.dataset.slide);
-  deck.slides[i][k] = e.target.value;
-  current = i;
-  markCurrent();
+  deck.slides[current][k] = e.target.value;
 
   if (k === 'notes') {
     e.target.closest('.notes-d').querySelector('.peek').textContent =
@@ -1432,7 +1443,7 @@ el('editor').addEventListener('input', e => {
   }
 
   if (k === 'markdown') {
-    const t = slideTitle(deck.slides[i]);
+    const t = slideTitle(deck.slides[current]);
     const node = panel.querySelector('[data-title]');
     node.textContent = t.text;
     node.classList.toggle('untitled', t.untitled);
@@ -1452,7 +1463,7 @@ el('editor').addEventListener('change', e => {
     return;
   }
 
-  if (e.target.dataset.k === 'page_style') paintEditor();
+  if (e.target.dataset.k === 'page_style') paintSlide();
   else closePop();
 
   paintBar();
@@ -1525,10 +1536,10 @@ el('next').addEventListener('click', () => {
 });
 
 function focusSlide() {
-  markCurrent();
+  paintSlide();
   paintBar();
 
-  const panel = el('editor').querySelector('[data-slide="' + current + '"]');
+  const panel = el('slidehost').querySelector('.panel');
   if (panel) panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
@@ -1537,10 +1548,21 @@ el('preview').addEventListener('load', () => {
   checkFit();
 
   try {
-    preview().contentWindow.addEventListener('hashchange', () => {
+    const win = preview().contentWindow;
+
+    win.addEventListener('hashchange', () => {
       readSlide();
       checkFit();
     });
+
+    // The keys, the controls and the overview all land here; the hash does not
+    // move for any of them. Reveal queues the listener when it is not up yet.
+    if (win.Reveal && typeof win.Reveal.on === 'function') {
+      win.Reveal.on('slidechanged', () => {
+        readSlide();
+        checkFit();
+      });
+    }
   } catch (err) { /* the frame reports on its next load */ }
 });
 

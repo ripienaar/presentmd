@@ -16,6 +16,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -269,8 +270,10 @@ type deckPayload struct {
 	// Revision is the modification time of presentation.md in nanoseconds, and
 	// zero for a deck that has not been written yet. A save carries the revision
 	// it read, so a file that changed underneath the browser is reported rather
-	// than written over.
-	Revision int64 `json:"revision"`
+	// than written over. It crosses as a string: a modification time in
+	// nanoseconds is past the integer a browser holds exactly, and one carried as
+	// a number came back rounded, so every save read as a file that had changed.
+	Revision int64 `json:"revision,string"`
 	// Markdown is the file as it stands, which is what the copy button hands over.
 	Markdown string `json:"markdown"`
 }
@@ -280,8 +283,9 @@ type deckRequest struct {
 	Path         string       `json:"path"`
 	Presentation Presentation `json:"presentation"`
 	Slides       []*Slide     `json:"slides"`
-	// Revision is the revision the browser opened, checked on a save.
-	Revision int64 `json:"revision"`
+	// Revision is the revision the browser opened, checked on a save, carried as
+	// a string for the reason deckPayload gives.
+	Revision int64 `json:"revision,string"`
 	// Force writes over a file that changed on disk since it was opened.
 	Force bool `json:"force"`
 	// Name is the directory a new deck is created in, under the root.
@@ -529,7 +533,7 @@ func (e *Editor) handleSave(w http.ResponseWriter, r *http.Request) {
 
 	e.log.Info("Wrote a deck", "deck", name, "root", e.root.Name(), "slides", len(req.Slides), "problems", len(problems))
 
-	e.write(w, map[string]any{"revision": revision, "markdown": string(data), "problems": problems})
+	e.write(w, map[string]any{"revision": strconv.FormatInt(revision, 10), "markdown": string(data), "problems": problems})
 }
 
 // draft renders a deck into the preview and returns what it would be written as.
