@@ -1,9 +1,11 @@
 # presentmd
 
 Slide decks written as markdown. A deck is a directory holding a
-`presentation.yaml` and one markdown file per slide. `presentmd` serves it on a
-local port and reloads the browser as you write, or writes the whole talk as one
-self contained HTML file that opens from disk with no network.
+`presentation.yaml` and one markdown file per slide, or one `presentation.md`
+carrying the whole talk. `presentmd` serves it on a local port and reloads the
+browser as you write, writes the whole talk as one self contained HTML file that
+opens from disk with no network, or opens [an editor](#the-editor) on it with the
+deck itself rendering underneath.
 
 Slides are [reveal.js](https://revealjs.com) underneath. Nothing is fetched at
 runtime: reveal, the theme, its fonts and your images are all served by the
@@ -101,6 +103,7 @@ presentmd serve example/themes
 ```
 presentmd serve [<flags>] <dir>
 presentmd render [<flags>] <dir> <target>
+presentmd edit [<flags>] <dir>
 ```
 
 `serve` answers on `--listen`, `127.0.0.1:8080` by default, and opens a browser
@@ -129,7 +132,67 @@ presentmd serve --theme ./themes/choria example/presentation
 `serve` keeps the override across a reload, so editing a slide does not put the
 deck's own theme back. `PRESENTMD_THEME` sets it for a shell.
 
-`--debug` on either raises the log level.
+`edit` opens a browser editor over the deck, with the deck itself rendered
+underneath it, and takes `--listen`, `--no-open` and `--theme` as `serve` does.
+It is described in [the editor](#the-editor).
+
+`--debug` raises the log level on any of them.
+
+## The editor
+
+```
+presentmd edit mydeck
+presentmd edit --root ~/talks ~/talks/mydeck
+```
+
+A page in two halves: the deck's settings and one panel per slide above, the
+deck as reveal renders it below. A panel collapsed shows the slide's heading, its
+page style and what else it sets; opened it shows a strip of the frontmatter it
+carries, the markdown body, and the notes behind a fold. A key is added from the
+`+` at the end of the strip and removed from the editor it opens in, so a slide
+setting nothing shows nothing.
+
+The deck below is not a drawing of the slides: every edit that settles is
+written out as a presentation.md, read back through the loader and rendered
+through the theme, so what is under the editor is the file a save writes and a
+slide that runs past the footer says so before you stand in front of it.
+
+`Save`, or `ctrl-s` and `cmd-s`, writes `presentation.md`. `Copy md` puts the same bytes on
+the clipboard for a deck you would rather paste somewhere yourself. A file that
+changed on disk since it was opened is reported rather than written over. The
+presenter and the contacts are kept in a cookie in your own browser, so the next
+talk starts with them filled in.
+
+The top bar counts what is wrong with the deck and lists it: the same problems
+`serve` prints, against the same files. Beside it, `☾` puts the editor's own
+chrome into dark, which the deck below never follows: a slide is whatever its
+theme makes it, on the projector and here.
+
+Moving between slides moves both halves. The arrows over the deck walk it and
+scroll the editor to that slide's panel, and clicking through the deck itself
+moves the editor onto the slide you are looking at. Like the deck it renders, the editor fetches
+nothing at runtime: its type is the theme's, served out of the binary.
+
+### The root
+
+Every file the editor reads and every file it writes goes through one
+[os.Root](https://pkg.go.dev/os#Root). A path that climbs out of it, and a
+symlink inside it that points out of it, are refused by the root rather than by a
+check somebody has to remember.
+
+The root is the deck directory, so an editor opened on a talk can write that talk
+and nothing else. `--root` widens it to a directory of talks: every deck under it
+opens from the `Open` menu, and `New deck` makes one there. Nothing else is
+written either way: one `presentation.md` per deck, no images, no theme files.
+
+The editor answers on the loopback address only, refuses a request that arrives
+under any other host name, and every request its page makes carries a token that
+is generated per run and written into the page. A page on another origin can post
+to your machine; it cannot read the page that holds the token.
+
+A deck written as `presentation.yaml` with a file per slide is refused rather
+than opened, since the editor writes the single file form and a save would
+otherwise leave two decks in one directory.
 
 ## Presenting
 
@@ -347,6 +410,10 @@ it:
 A save that leaves `presentation.yaml` half written keeps the page that is
 already showing and prints what was wrong, so a file caught mid-keystroke does
 not blank the slide you are standing in front of.
+
+The editor's preview rides the same stream: a keystroke that settles is rendered
+and the frame under the editor follows it, without anything being written to
+disk.
 
 ## License
 

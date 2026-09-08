@@ -159,6 +159,20 @@ func LoadDeck(dir string) (*Deck, error) {
 	return deck, nil
 }
 
+// DecodeDeck reads a deck out of the bytes of a presentation.md that need not
+// have been written yet, taking root as the deck directory every asset of it is
+// read through. The editor renders the draft in the browser through this, so a
+// deck being written and a deck on disk are loaded by the same reader.
+//
+// The deck takes root: Close releases it, as it does for a deck LoadDeck opened.
+func DecodeDeck(dir string, root *os.Root, data []byte) *Deck {
+	deck := &Deck{Dir: dir, Source: presentationMarkdownFile, Slides: []*Slide{}, root: root}
+
+	deck.loadMarkdownDeck(root.FS(), data)
+
+	return deck
+}
+
 // loadMarkdownDeck reads a whole deck out of one presentation.md: the
 // presentation from its frontmatter, then a slide for each pair of blocks the
 // slide breaks divide the rest into.

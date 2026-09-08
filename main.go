@@ -2,12 +2,14 @@
 //
 //	presentmd serve [<flags>] <dir>
 //	presentmd render <dir> <target>
+//	presentmd edit [<flags>] <dir>
 //
 // A deck is a directory holding either presentation.md, which carries the whole
 // deck, or presentation.yaml with one markdown file per slide. serve answers on
 // a local port and reloads the browser as the files change; render writes the
 // whole deck as one self contained HTML file that opens from disk with no
-// network.
+// network. edit serves a browser editor over the deck, with the deck itself
+// under it, and writes what it is told to inside a root it cannot leave.
 package main
 
 import (
@@ -22,6 +24,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,6 +58,7 @@ type command struct {
 	target string
 	theme  string
 	listen string
+	root   string
 	noOpen bool
 	debug  bool
 
@@ -74,14 +78,14 @@ func main() {
 		log:   slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})),
 	}
 
-	app := newApp(cmd, cmd.serveAction, cmd.renderAction)
+	app := newApp(cmd, cmd.serveAction, cmd.renderAction, cmd.editAction)
 
 	app.MustParseWithUsage(os.Args[1:])
 }
 
 // newApp builds the CLI. The actions are passed in so a test parses arguments
 // without starting a server.
-func newApp(cmd *command, serveAction fisk.Action, renderAction fisk.Action) *fisk.Application {
+func newApp(cmd *command, serveAction fisk.Action, renderAction fisk.Action, editAction fisk.Action) *fisk.Application {
 	app := fisk.New("presentmd", "Serves and renders slide decks written as markdown")
 	app.Version(version)
 	app.HelpFlag.Short('h')
@@ -97,6 +101,13 @@ func newApp(cmd *command, serveAction fisk.Action, renderAction fisk.Action) *fi
 	render.Arg("dir", "The deck directory to render").Required().StringVar(&cmd.path)
 	render.Arg("target", "The html file to write").Required().StringVar(&cmd.target)
 	render.Flag("theme", "Uses this theme instead of the one presentation.yaml names").Envar("PRESENTMD_THEME").StringVar(&cmd.theme)
+
+	edit := app.Command("edit", "Edits one deck in a browser, with the deck under it").Action(editAction)
+	edit.Arg("dir", "The deck directory to edit").Default(".").StringVar(&cmd.path)
+	edit.Flag("root", "Confines every read and write to this directory, the deck directory by default").Envar("PRESENTMD_ROOT").StringVar(&cmd.root)
+	edit.Flag("listen", "The address to listen on as host:port, port 0 picks a free one").Envar("PRESENTMD_LISTEN").Default(defaultListen).StringVar(&cmd.listen)
+	edit.Flag("no-open", "Does not open a browser on start").Envar("PRESENTMD_NO_OPEN").UnNegatableBoolVar(&cmd.noOpen)
+	edit.Flag("theme", "Uses this theme instead of the one the deck names").Envar("PRESENTMD_THEME").StringVar(&cmd.theme)
 
 	return app
 }
@@ -148,6 +159,15 @@ func (c *command) serveAction(_ *fisk.ParseContext) error {
 	defer stop()
 
 	return c.serve(ctx)
+}
+
+func (c *command) editAction(_ *fisk.ParseContext) error {
+	c.prepare()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	return c.edit(ctx)
 }
 
 func (c *command) renderAction(_ *fisk.ParseContext) error {
@@ -278,6 +298,106 @@ func (c *command) serve(ctx context.Context) error {
 		// an event stream is in flight for as long as its tab is open, so a deck
 		// with a browser on it would otherwise sit out the whole grace period.
 		handler.CloseStreams()
+
+		timed, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+		defer cancel()
+
+		err := srv.Shutdown(timed)
+		if err != nil {
+			c.log.Warn("Shutdown did not finish within the grace period", "error", err)
+		}
+	}()
+
+	err = srv.Serve(listener)
+	if err != nil && err != http.ErrServerClosed {
+		return err
+	}
+
+	return nil
+}
+
+// edit opens the editor on a deck and serves it until ctx is canceled.
+//
+// Every file it reads and every file it writes goes through one os.Root. The
+// root is the deck directory unless --root widens it, so an editor opened on a
+// talk can write that talk and nothing else, and an editor opened on a directory
+// of talks can move between them and start new ones without reaching past it. A
+// path that climbs out of the root, and a symlink inside it that points out of
+// it, are refused by the root rather than by a check that has to be remembered.
+func (c *command) edit(ctx context.Context) error {
+	dir, err := filepath.Abs(c.path)
+	if err != nil {
+		return err
+	}
+
+	rootDir := dir
+	if c.root != "" {
+		rootDir, err = filepath.Abs(c.root)
+		if err != nil {
+			return err
+		}
+	}
+
+	deck, err := filepath.Rel(rootDir, dir)
+	if err != nil {
+		return err
+	}
+
+	// The deck is named to the editor as a path under the root, so a deck outside
+	// it is refused here where the message can say so, rather than as a file the
+	// root would not open.
+	if deck == ".." || strings.HasPrefix(deck, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("the deck %s is not below the root %s", dir, rootDir)
+	}
+
+	root, err := os.OpenRoot(rootDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
+	override, err := c.themeOverride()
+	if err != nil {
+		return err
+	}
+
+	editor, err := present.NewEditor(present.EditorOptions{
+		Log:   c.log,
+		Root:  root,
+		Deck:  filepath.ToSlash(deck),
+		Theme: override,
+	})
+	if err != nil {
+		return err
+	}
+	defer editor.Close()
+
+	listener, err := listen(c.listen, c.log)
+	if err != nil {
+		return err
+	}
+
+	url := listenURL(listener)
+
+	c.log.Info("Editing a deck", "dir", dir, "root", rootDir, "url", url)
+	fmt.Printf("Editing %s on %s\n", dir, url)
+	fmt.Printf("Reads and writes are confined to %s\n", rootDir)
+
+	if !c.noOpen {
+		openBrowser(url, c.log)
+	}
+
+	srv := &http.Server{
+		Handler:           editor,
+		ReadHeaderTimeout: headerTimeout,
+	}
+
+	go func() {
+		<-ctx.Done()
+
+		// The preview's event stream is in flight for as long as the editor is
+		// open, so it ends before the shutdown waits on in flight requests.
+		editor.CloseStreams()
 
 		timed, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()

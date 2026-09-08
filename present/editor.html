@@ -1,0 +1,1606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>presentmd</title>
+
+<style>
+/* The fonts are the ones the shipped theme carries, served from the binary. The
+   editor fetches nothing: a talk is written on the machine it is written on. */
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-cond-500-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-cond-600-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-400-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-500-latin.woff2") format("woff2");
+}
+
+/* ------------------------------------------------------------------ *
+ * Editor chrome. It carries the deck theme's own paper, teal and rules
+ * in every viewer theme, so the editor and the slide under it are one
+ * surface rather than two.
+ * ------------------------------------------------------------------ */
+:root {
+  --bg: #f2f3ef;
+  --surface: #fbfbf8;
+  --surface-2: #eaebe4;
+  --sunken: #e6e7e0;
+  --ink: #1f231d;
+  --ink-2: #43473f;
+  --ink-3: #6b6f65;
+  --rule: #dbdcd2;
+  --rule-2: #c9cbbf;
+  --accent: #2c6570;
+  --accent-soft: #bcd7dc;
+  --accent-wash: #e2eef0;
+  --warn: #8a5a12;
+  --warn-wash: #f3e8d2;
+  --stage: #dcded6;
+
+  --f-head: "IBM Plex Sans Condensed", ui-sans-serif, system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* The two halves as fractions rather than as a percentage: a fraction is
+     shared out of whatever height the split has, where a percentage row needs
+     that height to be definite before it resolves at all. */
+  --editor-fr: 52fr;
+  --deck-fr: 48fr;
+}
+
+/* The switch in the top bar, and nothing else, asks for these. */
+:root[data-mode="dark"] {
+  --bg: #141817;
+  --surface: #1c2120;
+  --surface-2: #242a28;
+  --sunken: #101413;
+  --ink: #e9ebe5;
+  --ink-2: #c3c8c0;
+  --ink-3: #8d938a;
+  --rule: #313835;
+  --rule-2: #3d4441;
+  --accent: #77b3bd;
+  --accent-soft: #2f4a50;
+  --accent-wash: #1b2b2e;
+  --warn: #d3a259;
+  --warn-wash: #33291a;
+  --stage: #0c0f0e;
+}
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--ink-2);
+  font-family: var(--f-body);
+  font-size: 14px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ---------- top bar ---------- */
+
+.bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  height: 46px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+
+.mark {
+  font-family: var(--f-head);
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.mark .dot { color: var(--accent); }
+
+.dirbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 0 8px;
+  height: 28px;
+}
+.dirbox .dirpick {
+  height: 20px;
+  padding: 0 3px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  font-family: var(--f-body);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.dirbox .dirpick:hover { color: var(--accent); background: transparent; border: 0; }
+.dirbox input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--ink);
+}
+.dirbox input:focus { outline: none; }
+
+.bar .spacer { flex: 0 0 4px; }
+
+button {
+  font-family: var(--f-head);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  height: 28px;
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover { border-color: var(--rule-2); color: var(--ink); }
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fbfbf8;
+}
+button.primary:hover { filter: brightness(1.08); color: #fbfbf8; }
+:root[data-mode="dark"] button.primary { color: #101413; }
+:root[data-mode="dark"] button.primary:hover { color: #101413; }
+button.on { background: var(--accent-wash); border-color: var(--accent-soft); color: var(--accent); }
+button.icon { padding: 0 7px; font-size: 13px; text-transform: none; letter-spacing: 0; }
+
+.state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 var(--accent-soft);
+  animation: pulse 2.4s ease-out infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
+
+/* ---------- split ---------- */
+
+.split {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, var(--editor-fr)) 7px minmax(0, var(--deck-fr));
+}
+
+.editor {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 14px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.divider {
+  background: var(--surface-2);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  cursor: row-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.divider::after {
+  content: "";
+  width: 46px; height: 3px;
+  border-radius: 2px;
+  background: var(--rule-2);
+}
+.divider:hover::after { background: var(--accent); }
+
+/* ---------- panels ---------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+.panel.open { border-color: var(--rule-2); }
+.panel.settings.open { border-color: var(--accent-soft); }
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+.head:hover { background: var(--surface-2); border-radius: 4px; }
+
+.twist {
+  flex: 0 0 auto;
+  width: 12px;
+  color: var(--ink-3);
+  font-size: 10px;
+  transition: transform .12s ease;
+}
+.panel.open .twist { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .twist { transition: none; } }
+
+.num {
+  flex: 0 0 auto;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  color: var(--ink-3);
+  width: 20px;
+}
+.panel.current .num { color: var(--accent); font-weight: 500; }
+
+.slidetitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--f-head);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slidetitle.untitled { color: var(--ink-3); font-weight: 500; font-style: italic; }
+
+.settings .slidetitle { font-size: 13px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--accent); }
+.settings .summary {
+  flex: 2 1 auto;
+  min-width: 0;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chips { flex: 0 0 auto; display: flex; gap: 5px; align-items: center; }
+
+.chip {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.chip.style { background: var(--accent-wash); color: var(--accent); }
+.chip.warn { background: var(--warn-wash); color: var(--warn); }
+.chip.sw { width: 10px; height: 10px; padding: 0; border-radius: 2px; border: 1px solid var(--rule-2); }
+
+.rowacts { flex: 0 0 auto; display: flex; gap: 3px; opacity: 0; }
+.head:hover .rowacts, .panel.open .rowacts { opacity: 1; }
+.rowacts button { height: 22px; font-size: 11px; padding: 0 6px; }
+
+.body-wrap { padding: 2px 12px 12px 42px; }
+
+/* the frontmatter, as one strip of what is set */
+.props {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.prop {
+  height: 22px;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 340px;
+  padding: 0 7px;
+  background: var(--surface-2);
+  border-color: transparent;
+  border-radius: 3px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+.prop .pv { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prop:hover { border-color: var(--rule-2); color: var(--ink-3); }
+.prop.live { background: var(--accent-wash); border-color: var(--accent-soft); color: var(--accent); }
+.prop.live .pv { color: var(--accent); }
+.prop.warn { background: var(--warn-wash); color: var(--warn); }
+.prop.warn .pv { color: var(--warn); }
+.prop.add { background: transparent; border: 1px dashed var(--rule-2); padding: 0 8px; }
+.prop .sw {
+  width: 9px; height: 9px;
+  border-radius: 2px;
+  border: 1px solid var(--rule-2);
+  align-self: center;
+}
+
+.pop {
+  position: absolute;
+  top: calc(100% + 5px);
+  z-index: 6;
+  width: 300px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px;
+  background: var(--surface);
+  border: 1px solid var(--rule-2);
+  border-radius: 5px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.16);
+}
+.pop .pk { font-family: var(--f-mono); font-size: 10.5px; color: var(--ink-3); }
+.pop .acts { display: flex; justify-content: flex-end; }
+.pop .acts button { height: 22px; font-size: 10.5px; }
+.pop .menu { display: flex; flex-wrap: wrap; gap: 5px; }
+.pop .menu button {
+  height: 22px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: 0 7px;
+}
+
+.body-wrap .hint {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+.notes-d { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.notes-d > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--f-head);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+.notes-d > summary::-webkit-details-marker { display: none; }
+.notes-d > summary::before { content: "▸"; font-size: 9px; }
+.notes-d[open] > summary::before { content: "▾"; }
+.notes-d .peek {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.notes-d textarea { margin-top: 7px; }
+
+/* open, the strip carries what the collapsed row's chips carry */
+.panel.slide.open > .head .chips { display: none; }
+.panel:not(.open) .body-wrap { display: none; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 9px 14px;
+}
+.grid.wide { grid-template-columns: 1fr; }
+
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.field .k {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.field .k .req { color: var(--accent); }
+
+input[type="text"], select, textarea {
+  font-family: var(--f-body);
+  font-size: 13px;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 5px 7px;
+  width: 100%;
+  min-width: 0;
+}
+input[type="text"]:hover, select:hover, textarea:hover { border-color: var(--rule-2); }
+input::placeholder, textarea::placeholder { color: var(--ink-3); opacity: .8; }
+select { height: 27px; padding: 0 5px; }
+textarea { resize: vertical; line-height: 1.5; }
+textarea.md { font-family: var(--f-mono); font-size: 12.5px; min-height: 150px; }
+textarea.notes { min-height: 52px; font-size: 12.5px; }
+
+.sub {
+  margin-top: 11px;
+  padding-top: 9px;
+  border-top: 1px solid var(--rule);
+}
+.sub > .subhead {
+  font-family: var(--f-head);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+  margin-bottom: 7px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.subhead .hint {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.addrow { display: flex; gap: 8px; align-items: center; padding: 2px 0 0; }
+.addrow .rule { flex: 1 1 auto; height: 1px; background: var(--rule); }
+
+.empty {
+  border: 1px dashed var(--rule-2);
+  border-radius: 5px;
+  padding: 22px;
+  text-align: center;
+  color: var(--ink-3);
+}
+.empty p { margin: 0 0 10px; font-size: 13px; }
+.empty .path { font-family: var(--f-mono); font-size: 12px; color: var(--ink-2); }
+
+/* ---------- deck pane ---------- */
+
+.deck {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--stage);
+}
+
+.deckbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  height: 34px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--rule);
+}
+.deckbar .lbl {
+  font-family: var(--f-head);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+.deckbar .nav { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.deckbar .count {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink-2);
+  min-width: 52px;
+  text-align: center;
+}
+.deckbar .right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.deckbar .keys {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+.deckbar .keys kbd {
+  font-family: var(--f-mono);
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 3px;
+  color: var(--ink-2);
+}
+
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.scaler {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: top left;
+}
+
+.chipbtn {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  height: 24px;
+  padding: 0 8px;
+}
+.chipbtn.warn { background: var(--warn-wash); border-color: var(--warn-wash); color: var(--warn); }
+
+.deckbox {
+  display: flex;
+  align-items: baseline;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  background: var(--bg);
+  font-family: var(--f-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+.deckbox .deckpath { color: var(--ink); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deckbox .sep { padding: 0 2px; color: var(--rule-2); }
+
+.barpop {
+  position: absolute;
+  top: 44px;
+  left: 14px;
+  z-index: 20;
+  width: min(520px, calc(100vw - 28px));
+  max-height: 60vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--rule-2);
+  border-radius: 5px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.16);
+}
+.barpop .pk {
+  font-family: var(--f-head);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+.barpop .row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-family: var(--f-body);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  text-align: left;
+  color: var(--ink);
+}
+.barpop .row:hover { background: var(--surface-2); border-color: var(--rule); }
+.barpop .row.on { background: var(--accent-wash); border-color: var(--accent-soft); }
+.barpop .row .where { font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); margin-left: auto; white-space: nowrap; }
+.barpop .make { display: flex; gap: 6px; align-items: center; }
+.barpop .make input { flex: 1 1 auto; }
+.barpop .note { font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); }
+.barpop .problem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--warn);
+  background: var(--warn-wash);
+  border-radius: 0 4px 4px 0;
+}
+.barpop .problem .where { font-family: var(--f-mono); font-size: 11px; color: var(--warn); }
+
+#preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: var(--stage);
+  display: block;
+}
+</style>
+</head>
+
+<body>
+<script id="session" type="application/json">{{session}}</script>
+
+<div class="bar">
+  <div class="mark">presentmd<span class="dot">.</span></div>
+  <button class="deckbox" id="deckbox" title="The deck being edited, under the root">
+    <span class="rootpath" id="rootpath"></span><span class="sep">/</span><span class="deckpath" id="deckpath"></span>
+  </button>
+  <button id="open">Open</button>
+  <button id="new">New deck</button>
+  <span class="spacer"></span>
+  <div class="state"><span class="pulse"></span><span id="status">Loading</span></div>
+  <button id="problems" class="chipbtn">no problems</button>
+  <button id="copy" title="Copy presentation.md to the clipboard">Copy md</button>
+  <button id="mode" class="icon" title="Light or dark editor" aria-label="Light or dark editor" aria-pressed="false">☾</button>
+  <button id="save" class="primary">Save</button>
+</div>
+
+<div class="barpop" id="barpop" hidden></div>
+
+<div class="split">
+  <div class="editor" id="editor"></div>
+  <div class="divider" id="divider" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize editor and deck"></div>
+  <div class="deck">
+    <div class="deckbar">
+      <span class="lbl">Deck</span>
+      <span class="chip" id="d-style">—</span>
+      <span class="chip" id="d-fit"></span>
+      <div class="nav">
+        <button class="icon" id="prev" aria-label="Previous slide">◀</button>
+        <span class="count" id="count">0 / 0</span>
+        <button class="icon" id="next" aria-label="Next slide">▶</button>
+      </div>
+      <div class="right">
+        <span class="keys" id="keys">16:9 · <kbd>S</kbd> speaker <kbd>F</kbd> full</span>
+      </div>
+    </div>
+    <div class="stage" id="stage">
+      <iframe id="preview" src="preview/" title="The deck as it renders"></iframe>
+    </div>
+  </div>
+</div>
+
+<script>
+/*
+ * The editor talks to the binary that served it. Every keystroke that settles is
+ * sent as a draft, encoded there as a presentation.md, read back through the
+ * deck loader and rendered into the frame below, so what is under the editor is
+ * the file a save writes. Nothing here parses markdown or decides what a slide
+ * looks like: the theme does that, in the deck the frame holds.
+ */
+
+const session = JSON.parse(document.getElementById('session').textContent);
+
+const PAGE_STYLES = ['title', 'section', 'content', 'columns', 'code', 'image', 'closing'];
+const SPLIT_STYLES = ['columns'];
+
+/* The frontmatter of a slide, in the order the chips carry it. */
+const PROPS = [
+  { k: 'page_style', req: true, options: [''].concat(PAGE_STYLES) },
+  { k: 'text_size', options: ['', 'small', 'normal', 'large', 'huge'] },
+  { k: 'transition', options: ['', 'none', 'fade', 'slide', 'convex', 'concave', 'zoom'] },
+  { k: 'background', ph: '#dce8e6 or images/backdrop.svg' },
+  { k: 'caption', ph: 'a line under the body' },
+  { k: 'cta', ph: 'a call to action under the caption' }
+];
+
+/* The presenter and the contacts are what a new deck starts with, so they are
+   what the cookie keeps. */
+const REMEMBERED = ['presenter', 'contact_email', 'contact_web', 'contact_social', 'contact_social_network'];
+const COOKIE = 'presentmd_presenter';
+
+let deck = { path: session.deck, root: session.root, presentation: {}, slides: [], problems: [], revision: 0 };
+let markdown = '';
+let current = 0;
+let dirty = false;
+let settingsOpen = false;
+let openSlides = new Set();
+let draftTimer = null;
+
+const el = id => document.getElementById(id);
+const esc = s => String(s === null || s === undefined ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const attr = s => esc(s).replace(/"/g, '&quot;');
+
+/* presenter.name and the like reach into the block the presentation keeps them in */
+function get(obj, key) {
+  return key.split('.').reduce((at, part) => (at === null || at === undefined ? undefined : at[part]), obj);
+}
+
+function set(obj, key, value) {
+  const parts = key.split('.');
+  const last = parts.pop();
+  let at = obj;
+
+  parts.forEach(part => {
+    if (!at[part] || typeof at[part] !== 'object') at[part] = {};
+    at = at[part];
+  });
+
+  at[last] = value;
+}
+
+/* ---------- the api ---------- */
+
+async function api(method, path, body) {
+  const headers = { 'X-Presentmd-Token': session.token };
+  if (body) headers['Content-Type'] = 'application/json';
+
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const text = await res.text();
+
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch (err) { data = { error: text }; }
+
+  if (!res.ok) {
+    const failure = new Error(data.error || res.statusText);
+    failure.status = res.status;
+
+    throw failure;
+  }
+
+  return data;
+}
+
+function payload(extra) {
+  return Object.assign({
+    path: deck.path,
+    presentation: deck.presentation,
+    slides: deck.slides,
+    revision: deck.revision
+  }, extra || {});
+}
+
+function status(text) {
+  el('status').textContent = text;
+}
+
+/* ---------- the deck ---------- */
+
+function adopt(loaded) {
+  deck = loaded;
+  deck.presentation = deck.presentation || {};
+  deck.slides = deck.slides || [];
+  deck.problems = deck.problems || [];
+  markdown = deck.markdown || '';
+  current = 0;
+  openSlides = new Set(deck.slides.length ? [0] : []);
+  settingsOpen = !deck.slides.length;
+  dirty = false;
+
+  el('rootpath').textContent = deck.root;
+  el('deckpath').textContent = deck.path === '.' ? '' : deck.path;
+  el('save').textContent = 'Save';
+
+  paintEditor();
+  paintProblems();
+  paintBar();
+  status(deck.slides.length + (deck.slides.length === 1 ? ' slide' : ' slides'));
+}
+
+async function openDeck(path) {
+  try {
+    adopt(await api('GET', 'api/deck?path=' + encodeURIComponent(path)));
+    reloadPreview();
+  } catch (err) {
+    status(err.message);
+  }
+}
+
+/* touch is one edit: the save button goes dirty and the draft is sent once the
+   typing stops, so the frame follows a sentence rather than a letter. */
+function touch() {
+  dirty = true;
+  el('save').textContent = 'Save •';
+
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(sendDraft, 350);
+}
+
+async function sendDraft() {
+  try {
+    const out = await api('POST', 'api/draft', payload());
+    markdown = out.markdown || '';
+    deck.problems = out.problems || [];
+    paintProblems();
+  } catch (err) {
+    status(err.message);
+  }
+}
+
+async function save(force) {
+  try {
+    const out = await api('POST', 'api/save', payload({ force: !!force }));
+    deck.revision = out.revision;
+    deck.problems = out.problems || [];
+    markdown = out.markdown || '';
+    dirty = false;
+
+    paintProblems();
+    el('save').textContent = 'Saved';
+    status('Wrote presentation.md');
+    setTimeout(() => { if (!dirty) el('save').textContent = 'Save'; }, 1400);
+  } catch (err) {
+    if (err.status === 409 && !force) {
+      if (window.confirm('presentation.md changed on disk since it was opened. Write over it?')) save(true);
+
+      return;
+    }
+
+    status(err.message);
+  }
+}
+
+/* ---------- the frame ---------- */
+
+const preview = () => el('preview');
+
+/* The frame is moved by its src rather than by reloading the document inside it.
+   At load that document is still about:blank, and reloading that left the frame
+   on about:blank rather than on the deck. The query is what makes a repeated
+   move a navigation, and the hash carries the slide over. */
+function reloadPreview() {
+  preview().src = 'preview/?r=' + Date.now() + '#/' + current;
+}
+
+/* The frame is told which slide to show through the hash reveal keeps its place
+   in, so the deck follows the panel being edited without being reloaded. */
+function showSlide(i) {
+  try {
+    const target = '#/' + i;
+    if (preview().contentWindow.location.hash !== target) preview().contentWindow.location.hash = target;
+  } catch (err) { /* the frame is still loading */ }
+}
+
+/* readSlide is the other direction: clicking through the deck moves the editor
+   onto the slide being looked at. */
+function readSlide() {
+  try {
+    const hash = preview().contentWindow.location.hash.match(/^#\/(\d+)/);
+    if (!hash) return;
+
+    const i = Number(hash[1]);
+    if (i === current || i >= deck.slides.length) return;
+
+    current = i;
+    paintBar();
+    markCurrent();
+  } catch (err) { /* the frame is still loading */ }
+}
+
+/* checkFit reports the slide that runs past the footer, which is otherwise
+   something a person finds out by rendering the deck and looking at it. */
+function checkFit() {
+  const chip = el('d-fit');
+
+  try {
+    const section = preview().contentDocument.querySelector('.reveal .slides section.present');
+    const body = section && section.querySelector('.slide-body');
+
+    if (!body) {
+      chip.textContent = '';
+      chip.className = 'chip';
+
+      return;
+    }
+
+    const over = body.scrollHeight > body.clientHeight + 1;
+    chip.textContent = over ? 'runs past the footer' : 'fits';
+    chip.className = 'chip' + (over ? ' warn' : '');
+  } catch (err) {
+    chip.textContent = '';
+    chip.className = 'chip';
+  }
+}
+
+function paintBar() {
+  const slide = deck.slides[current];
+
+  el('count').textContent = deck.slides.length ? (current + 1) + ' / ' + deck.slides.length : '0 / 0';
+  el('d-style').textContent = slide ? (slide.page_style || 'no page_style') : '—';
+  el('d-style').className = 'chip ' + (slide && slide.page_style ? 'style' : 'warn');
+  el('keys').innerHTML = esc(deck.presentation.aspect || '16:9') + ' · <kbd>S</kbd> speaker <kbd>F</kbd> full';
+
+  showSlide(current);
+  checkFit();
+}
+
+function paintProblems() {
+  const count = deck.problems.length;
+  const button = el('problems');
+
+  button.textContent = count ? count + (count === 1 ? ' problem' : ' problems') : 'no problems';
+  button.className = 'chipbtn' + (count ? ' warn' : '');
+}
+
+/* ---------- the panels ---------- */
+
+function splitHeading(md) {
+  const lines = String(md || '').split('\n');
+  const at = lines.findIndex(line => /^#\s+/.test(line));
+
+  return at === -1 ? '' : lines[at].replace(/^#\s+/, '').trim();
+}
+
+function slideTitle(s) {
+  const heading = splitHeading(s.markdown);
+  if (heading) return { text: heading, untitled: false };
+
+  if (s.page_style === 'title') {
+    return { text: deck.presentation.title || 'Title slide', untitled: !deck.presentation.title };
+  }
+
+  return { text: 'no heading', untitled: true };
+}
+
+function control(key, value, opts) {
+  opts = opts || {};
+
+  if (opts.options) {
+    return '<select data-k="' + key + '">' + opts.options.map(o =>
+      '<option value="' + attr(o) + '"' + (o === (value || '') ? ' selected' : '') + '>' + (o || '—') + '</option>').join('') +
+      '</select>';
+  }
+
+  return '<input type="text" data-k="' + key + '" spellcheck="true" value="' + attr(value || '') +
+    '" placeholder="' + attr(opts.ph || '') + '">';
+}
+
+function field(key, value, opts) {
+  opts = opts || {};
+
+  return '<label class="field"><span class="k">' + esc(opts.label || key) +
+    (opts.req ? ' <span class="req">required</span>' : '') + '</span>' + control(key, value, opts) + '</label>';
+}
+
+function propChip(p, s) {
+  const v = s[p.k] || '';
+  const cls = 'prop' + (!v && p.req ? ' warn' : '') + (v && p.k !== 'page_style' ? ' live' : '');
+  const swatch = p.k === 'background' && v && !/[/.]/.test(v)
+    ? '<span class="sw" style="background:' + attr(v) + '"></span>' : '';
+
+  return '<button class="' + cls + '" data-prop="' + p.k + '" title="' + attr(p.k + ': ' + (v || 'not set')) + '">' +
+    '<span class="pk">' + p.k + '</span>' + swatch + '<span class="pv">' + esc(v || 'not set') + '</span></button>';
+}
+
+function propsHTML(s) {
+  const shown = PROPS.filter(p => p.req || s[p.k]);
+  const rest = PROPS.filter(p => !p.req && !s[p.k]);
+
+  return shown.map(p => propChip(p, s)).join('') +
+    (rest.length ? '<button class="prop add" data-prop-add title="Add a frontmatter key">+</button>' : '');
+}
+
+function popKey() {
+  const pop = el('editor').querySelector('.pop');
+
+  return pop ? pop.dataset.key : null;
+}
+
+function closePop() {
+  const pop = el('editor').querySelector('.pop');
+  if (!pop) return;
+
+  const panel = pop.closest('[data-slide]');
+  pop.remove();
+
+  if (panel) repaintProps(panel);
+}
+
+function propPopHTML(i, key) {
+  const p = PROPS.find(x => x.k === key);
+  const s = deck.slides[i];
+
+  return '<div class="pk">' + key + '</div>' + control(key, s[key], p) +
+    (p.req ? '' : '<div class="acts"><button data-prop-clear="' + key + '">Remove</button></div>');
+}
+
+function openPop(panel, anchorSel, key, html) {
+  closePop();
+
+  const props = panel.querySelector('.props');
+  const chip = props.querySelector(anchorSel);
+  if (!chip) return;
+
+  const pop = document.createElement('div');
+  pop.className = 'pop';
+  pop.dataset.key = key;
+  pop.innerHTML = html;
+  props.appendChild(pop);
+  pop.style.left = Math.max(0, Math.min(chip.offsetLeft, props.clientWidth - pop.offsetWidth)) + 'px';
+
+  const first = pop.querySelector('input, select, button');
+  if (first) first.focus();
+}
+
+function repaintProps(panel) {
+  panel.querySelector('.props').innerHTML = propsHTML(deck.slides[Number(panel.dataset.slide)]);
+}
+
+function summaryLine() {
+  const p = deck.presentation;
+
+  return [p.title || 'untitled', 'theme: ' + (p.theme || 'none'), p.aspect || '16:9',
+    [get(p, 'presenter.name'), get(p, 'presenter.surname')].filter(Boolean).join(' ')].filter(Boolean).join('  ·  ');
+}
+
+function settingsPanel() {
+  const p = deck.presentation;
+
+  return '<section class="panel settings' + (settingsOpen ? ' open' : '') + '" data-panel="settings">' +
+    '<div class="head" tabindex="0" role="button" aria-expanded="' + settingsOpen + '">' +
+      '<span class="twist">▶</span>' +
+      '<span class="slidetitle">Presentation</span>' +
+      '<span class="summary">' + esc(summaryLine()) + '</span>' +
+      '<span class="chips"><span class="chip">presentation.md</span></span>' +
+    '</div>' +
+    '<div class="body-wrap">' +
+      '<div class="grid">' +
+        field('title', p.title, { req: true, ph: 'the deck and the title slide' }) +
+        field('subtitle', p.subtitle) +
+        field('event', p.event, { ph: 'the conference' }) +
+        field('date', p.date, { ph: '2026-02-02' }) +
+        field('theme', p.theme, { req: true, ph: 'default, or ./themes/mine' }) +
+        field('aspect', p.aspect, { options: ['16:9', '4:3', '16:10'] }) +
+        field('transition', p.transition, { options: ['', 'none', 'fade', 'slide', 'convex', 'concave', 'zoom'] }) +
+        field('transition_speed', p.transition_speed, { options: ['', 'default', 'fast', 'slow'] }) +
+      '</div>' +
+      '<div class="sub"><div class="subhead">Presenter<span class="hint">placed by the theme, never by a slide · kept for the next deck</span></div>' +
+        '<div class="grid">' +
+          field('presenter.name', get(p, 'presenter.name'), { label: 'name' }) +
+          field('presenter.surname', get(p, 'presenter.surname'), { label: 'surname' }) +
+          field('presenter.avatar', get(p, 'presenter.avatar'), { label: 'avatar', ph: 'images/avatar.svg' }) +
+          field('presenter.github', get(p, 'presenter.github'), { label: 'github', ph: 'handle, builds the avatar URL' }) +
+        '</div>' +
+      '</div>' +
+      '<div class="sub"><div class="subhead">Contacts<span class="hint">the footer and the closing slide · kept for the next deck</span></div>' +
+        '<div class="grid">' +
+          field('contact_email', p.contact_email) +
+          field('contact_web', p.contact_web) +
+          field('contact_social', p.contact_social) +
+          field('contact_social_network', p.contact_social_network, { ph: 'Mastodon, Bluesky' }) +
+        '</div>' +
+      '</div>' +
+      '<div class="sub"><div class="subhead">Footer<span class="hint">set this or the contacts above, not both</span></div>' +
+        '<div class="grid wide">' + field('footer', p.footer, { ph: 'replaces the line built from the presenter and the contacts' }) + '</div>' +
+      '</div>' +
+    '</div>' +
+  '</section>';
+}
+
+function slidePanel(s, i) {
+  const open = openSlides.has(i);
+  const t = slideTitle(s);
+  const chips = [];
+
+  if (!s.page_style) chips.push('<span class="chip warn">no page_style</span>');
+  else chips.push('<span class="chip style">' + esc(s.page_style) + '</span>');
+
+  if (s.text_size) chips.push('<span class="chip">' + esc(s.text_size) + '</span>');
+  if (s.transition) chips.push('<span class="chip">' + esc(s.transition) + '</span>');
+  if (s.background) chips.push('<span class="chip">background</span>');
+  if (s.notes) chips.push('<span class="chip">notes</span>');
+
+  return '<section class="panel slide' + (open ? ' open' : '') + (i === current ? ' current' : '') + '" data-slide="' + i + '">' +
+    '<div class="head" tabindex="0" role="button" aria-expanded="' + open + '">' +
+      '<span class="twist">▶</span>' +
+      '<span class="num">' + String(i + 1).padStart(2, '0') + '</span>' +
+      '<span class="slidetitle' + (t.untitled ? ' untitled' : '') + '" data-title>' + esc(t.text) + '</span>' +
+      '<span class="chips">' + chips.join('') + '</span>' +
+      '<span class="rowacts">' +
+        '<button class="icon" data-act="up" title="Move up">↑</button>' +
+        '<button class="icon" data-act="down" title="Move down">↓</button>' +
+        '<button class="icon" data-act="del" title="Delete slide">✕</button>' +
+      '</span>' +
+    '</div>' +
+    '<div class="body-wrap">' +
+      '<div class="props">' + propsHTML(s) + '</div>' +
+      '<textarea data-k="markdown" class="md" spellcheck="true" placeholder="# Heading&#10;&#10;The body, as markdown.">' + esc(s.markdown) + '</textarea>' +
+      (SPLIT_STYLES.includes(s.page_style) ? '<div class="hint">--- on a line of its own divides the two columns</div>' : '') +
+      '<details class="notes-d">' +
+        '<summary>Notes<span class="peek">' + esc(s.notes ? s.notes.replace(/\s+/g, ' ').slice(0, 90) : 'nothing yet — the speaker view, never the audience') + '</span></summary>' +
+        '<textarea data-k="notes" class="notes" spellcheck="true" placeholder="what to say on this slide">' + esc(s.notes) + '</textarea>' +
+      '</details>' +
+    '</div>' +
+  '</section>';
+}
+
+function paintEditor() {
+  const parts = [settingsPanel()];
+
+  if (!deck.slides.length) {
+    parts.push('<div class="empty"><p>No slides in <span class="path">presentation.md</span> yet.</p>' +
+      '<button class="primary" data-act="add">Add the first slide</button></div>');
+  } else {
+    deck.slides.forEach((s, i) => parts.push(slidePanel(s, i)));
+    parts.push('<div class="addrow"><span class="rule"></span>' +
+      '<button data-act="add">+ Add slide</button><span class="rule"></span></div>');
+  }
+
+  el('editor').innerHTML = parts.join('');
+}
+
+function markCurrent() {
+  document.querySelectorAll('.panel.slide').forEach((panel, i) => panel.classList.toggle('current', i === current));
+}
+
+function newSlide() {
+  return { page_style: 'content', caption: '', cta: '', background: '', transition: '', text_size: '', notes: '', markdown: '# \n\n' };
+}
+
+/* ---------- what the browser keeps ---------- */
+
+function remember() {
+  const keep = {};
+  REMEMBERED.forEach(key => { keep[key] = deck.presentation[key]; });
+
+  try {
+    document.cookie = COOKIE + '=' + encodeURIComponent(JSON.stringify(keep)) + ';path=/;max-age=31536000;samesite=lax';
+  } catch (err) { /* a browser with cookies off does not prefill, and nothing else changes */ }
+}
+
+function remembered() {
+  try {
+    const hit = document.cookie.split('; ').find(c => c.startsWith(COOKIE + '='));
+
+    return hit ? JSON.parse(decodeURIComponent(hit.slice(COOKIE.length + 1))) : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+/* ---------- the menus in the top bar ---------- */
+
+function showBarPop(html, left) {
+  const pop = el('barpop');
+  pop.innerHTML = html;
+  pop.style.left = Math.max(14, left) + 'px';
+  pop.hidden = false;
+
+  const first = pop.querySelector('input, button');
+  if (first) first.focus();
+}
+
+function hideBarPop() {
+  el('barpop').hidden = true;
+}
+
+async function showDecks(anchor) {
+  try {
+    const out = await api('GET', 'api/decks');
+    const rows = (out.decks || []).map(d =>
+      '<button class="row' + (d.path === deck.path ? ' on' : '') + '" data-open="' + attr(d.path) + '">' +
+        '<span>' + esc(d.title || (d.path === '.' ? out.root : d.path)) + '</span>' +
+        '<span class="where">' + esc(d.path) + ' · ' + d.slides + '</span></button>').join('');
+
+    showBarPop('<div class="pk">Decks under ' + esc(out.root) + '</div>' +
+      (rows || '<div class="note">no deck under this root yet</div>'), anchor.offsetLeft);
+  } catch (err) {
+    status(err.message);
+  }
+}
+
+function showNew(anchor) {
+  showBarPop('<div class="pk">New deck</div>' +
+    '<div class="make"><input id="newname" type="text" spellcheck="false" placeholder="a-directory-name">' +
+    '<button class="primary" data-make>Create</button></div>' +
+    '<div class="note">a directory under ' + esc(deck.root) + ', carrying the presenter and contacts you last used</div>',
+    anchor.offsetLeft);
+}
+
+function showProblems(anchor) {
+  const rows = deck.problems.map(p =>
+    '<div class="problem"><span class="where">' + esc(p.path) + '</span><span>' + esc(p.message) + '</span></div>').join('');
+
+  showBarPop('<div class="pk">Problems</div>' +
+    (rows || '<div class="note">the deck loads and renders clean</div>'), anchor.offsetLeft);
+}
+
+async function create(name) {
+  const presentation = Object.assign({}, remembered(), {
+    title: name.replace(/[-_]+/g, ' ').trim(),
+    theme: 'default',
+    aspect: '16:9'
+  });
+
+  try {
+    adopt(await api('POST', 'api/decks', { name, presentation, slides: [{ page_style: 'title', markdown: '' }] }));
+    hideBarPop();
+    reloadPreview();
+  } catch (err) {
+    status(err.message);
+  }
+}
+
+/* ---------- wiring ---------- */
+
+el('editor').addEventListener('click', e => {
+  const panel = e.target.closest('[data-slide]');
+
+  const chip = e.target.closest('[data-prop]');
+  if (chip && panel) {
+    const key = chip.dataset.prop;
+
+    if (popKey() === key && panel.contains(el('editor').querySelector('.pop'))) closePop();
+    else openPop(panel, '[data-prop="' + key + '"]', key, propPopHTML(Number(panel.dataset.slide), key));
+
+    return;
+  }
+
+  if (e.target.closest('[data-prop-add]') && panel) {
+    const s = deck.slides[Number(panel.dataset.slide)];
+    const rest = PROPS.filter(x => !x.req && !s[x.k]);
+
+    openPop(panel, '[data-prop-add]', '+', '<div class="pk">add a key</div><div class="menu">' +
+      rest.map(x => '<button data-prop-pick="' + x.k + '">' + x.k + '</button>').join('') + '</div>');
+
+    return;
+  }
+
+  const pick = e.target.closest('[data-prop-pick]');
+  if (pick && panel) {
+    openPop(panel, '[data-prop-add]', pick.dataset.propPick, propPopHTML(Number(panel.dataset.slide), pick.dataset.propPick));
+
+    return;
+  }
+
+  const clear = e.target.closest('[data-prop-clear]');
+  if (clear && panel) {
+    deck.slides[Number(panel.dataset.slide)][clear.dataset.propClear] = '';
+    closePop();
+    touch();
+
+    return;
+  }
+
+  if (e.target.closest('.pop')) return;
+
+  const act = e.target.closest('[data-act]');
+  if (act) {
+    e.stopPropagation();
+
+    const i = panel ? Number(panel.dataset.slide) : -1;
+
+    if (act.dataset.act === 'add') {
+      deck.slides.push(newSlide());
+      current = deck.slides.length - 1;
+      openSlides = new Set([current]);
+    } else if (act.dataset.act === 'del') {
+      deck.slides.splice(i, 1);
+      current = Math.max(0, Math.min(current, deck.slides.length - 1));
+      openSlides.delete(i);
+    } else if (act.dataset.act === 'up' && i > 0) {
+      deck.slides.splice(i - 1, 0, deck.slides.splice(i, 1)[0]);
+      current = i - 1;
+      openSlides = new Set([current]);
+    } else if (act.dataset.act === 'down' && i < deck.slides.length - 1) {
+      deck.slides.splice(i + 1, 0, deck.slides.splice(i, 1)[0]);
+      current = i + 1;
+      openSlides = new Set([current]);
+    }
+
+    paintEditor();
+    paintBar();
+    touch();
+
+    return;
+  }
+
+  const head = e.target.closest('.head');
+  if (!head) return;
+
+  const owner = head.parentElement;
+
+  if (owner.dataset.panel === 'settings') {
+    settingsOpen = !settingsOpen;
+    owner.classList.toggle('open', settingsOpen);
+    head.setAttribute('aria-expanded', settingsOpen);
+
+    return;
+  }
+
+  const i = Number(owner.dataset.slide);
+  const open = !openSlides.has(i);
+
+  if (open) openSlides.add(i); else openSlides.delete(i);
+
+  owner.classList.toggle('open', open);
+  head.setAttribute('aria-expanded', open);
+  current = i;
+  markCurrent();
+  paintBar();
+});
+
+el('editor').addEventListener('keydown', e => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.classList.contains('head')) {
+    e.preventDefault();
+    e.target.click();
+  }
+});
+
+el('editor').addEventListener('input', e => {
+  const k = e.target.dataset.k;
+  if (!k) return;
+
+  const panel = e.target.closest('[data-slide]');
+
+  if (!panel) {
+    set(deck.presentation, k, e.target.value);
+    el('editor').querySelector('.settings .summary').textContent = summaryLine();
+
+    if (REMEMBERED.some(key => k === key || k.startsWith(key + '.'))) remember();
+
+    touch();
+
+    return;
+  }
+
+  const i = Number(panel.dataset.slide);
+  deck.slides[i][k] = e.target.value;
+  current = i;
+  markCurrent();
+
+  if (k === 'notes') {
+    e.target.closest('.notes-d').querySelector('.peek').textContent =
+      e.target.value.replace(/\s+/g, ' ').slice(0, 90) || 'nothing yet — the speaker view, never the audience';
+  }
+
+  if (k === 'markdown') {
+    const t = slideTitle(deck.slides[i]);
+    const node = panel.querySelector('[data-title]');
+    node.textContent = t.text;
+    node.classList.toggle('untitled', t.untitled);
+  }
+
+  touch();
+});
+
+el('editor').addEventListener('change', e => {
+  if (e.target.tagName !== 'SELECT') return;
+
+  const panel = e.target.closest('[data-slide]');
+
+  if (!panel) {
+    touch();
+
+    return;
+  }
+
+  if (e.target.dataset.k === 'page_style') paintEditor();
+  else closePop();
+
+  paintBar();
+  touch();
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.pop, [data-prop], [data-prop-add]')) closePop();
+  if (!e.target.closest('#barpop, #open, #new, #problems, #deckbox')) hideBarPop();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closePop();
+    hideBarPop();
+  }
+
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    save(false);
+  }
+});
+
+el('barpop').addEventListener('click', e => {
+  const row = e.target.closest('[data-open]');
+
+  if (row) {
+    hideBarPop();
+    openDeck(row.dataset.open);
+
+    return;
+  }
+
+  if (e.target.closest('[data-make]')) {
+    const name = el('newname').value.trim();
+    if (name) create(name);
+  }
+});
+
+el('barpop').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.id === 'newname') {
+    const name = e.target.value.trim();
+    if (name) create(name);
+  }
+});
+
+el('open').addEventListener('click', e => showDecks(e.currentTarget));
+el('deckbox').addEventListener('click', e => showDecks(e.currentTarget));
+el('new').addEventListener('click', e => showNew(e.currentTarget));
+el('problems').addEventListener('click', e => showProblems(e.currentTarget));
+el('save').addEventListener('click', () => save(false));
+
+el('copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(markdown);
+    status('Copied presentation.md');
+  } catch (err) {
+    status('Cannot reach the clipboard: ' + err.message);
+  }
+});
+
+el('prev').addEventListener('click', () => {
+  current = Math.max(0, current - 1);
+  focusSlide();
+});
+
+el('next').addEventListener('click', () => {
+  current = Math.min(deck.slides.length - 1, current + 1);
+  focusSlide();
+});
+
+function focusSlide() {
+  markCurrent();
+  paintBar();
+
+  const panel = el('editor').querySelector('[data-slide="' + current + '"]');
+  if (panel) panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+el('preview').addEventListener('load', () => {
+  showSlide(current);
+  checkFit();
+
+  try {
+    preview().contentWindow.addEventListener('hashchange', () => {
+      readSlide();
+      checkFit();
+    });
+  } catch (err) { /* the frame reports on its next load */ }
+});
+
+/* the editor takes the switch; the deck in the frame is whatever its theme says */
+function setMode(mode) {
+  document.documentElement.dataset.mode = mode;
+  el('mode').textContent = mode === 'dark' ? '☀' : '☾';
+  el('mode').setAttribute('aria-pressed', mode === 'dark');
+
+  try { localStorage.setItem('presentmd-editor-mode', mode); } catch (err) { /* nothing to remember it with */ }
+}
+
+el('mode').addEventListener('click', () => {
+  setMode(document.documentElement.dataset.mode === 'dark' ? 'light' : 'dark');
+});
+
+try { setMode(localStorage.getItem('presentmd-editor-mode') === 'dark' ? 'dark' : 'light'); }
+catch (err) { setMode('light'); }
+
+/* the split */
+let dragging = false;
+
+function splitAt(pct) {
+  document.documentElement.style.setProperty('--editor-fr', pct + 'fr');
+  document.documentElement.style.setProperty('--deck-fr', (100 - pct) + 'fr');
+}
+
+el('divider').addEventListener('pointerdown', e => {
+  dragging = true;
+  el('divider').setPointerCapture(e.pointerId);
+});
+
+el('divider').addEventListener('pointermove', e => {
+  if (!dragging) return;
+
+  const split = document.querySelector('.split');
+  const pct = Math.min(82, Math.max(18, ((e.clientY - split.getBoundingClientRect().top) / split.clientHeight) * 100));
+  splitAt(pct);
+});
+
+el('divider').addEventListener('pointerup', e => {
+  dragging = false;
+  el('divider').releasePointerCapture(e.pointerId);
+});
+
+el('divider').addEventListener('keydown', e => {
+  const at = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--editor-fr')) || 52;
+
+  if (e.key === 'ArrowUp') splitAt(Math.max(18, at - 4));
+  if (e.key === 'ArrowDown') splitAt(Math.min(82, at + 4));
+});
+
+window.addEventListener('beforeunload', e => {
+  if (!dirty) return;
+
+  e.preventDefault();
+  e.returnValue = '';
+});
+
+openDeck(session.deck);
+</script>
+</body>
+</html>
