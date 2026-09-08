@@ -43,6 +43,12 @@ type HandlerOptions struct {
 	// present serve writes them to stdout there, which is the whole record a
 	// person presenting gets: the design puts no banner on the page.
 	Report func(problems []Problem)
+	// Theme is the theme a reload loads instead of the one presentation.yaml
+	// names, empty when the deck decides. A caller overriding the theme passes it
+	// here as well as loading the first one itself, since the watcher reads the
+	// deck again on every save and would otherwise put the deck's own theme back
+	// the first time a slide is edited.
+	Theme string
 }
 
 // DeckHandler serves one deck: the page at the root of its space, reveal and the
@@ -61,6 +67,9 @@ type DeckHandler struct {
 	report func(problems []Problem)
 	// eventsURL is the caller's own stream, used when this handler runs none.
 	eventsURL string
+	// themeName is the caller's theme override, empty when the deck names its
+	// own.
+	themeName string
 
 	mu       sync.RWMutex
 	deck     *Deck
@@ -85,6 +94,7 @@ func Handler(deck *Deck, theme *Theme, opts HandlerOptions) (*DeckHandler, error
 		settle:    deckSettle,
 		report:    opts.Report,
 		eventsURL: opts.EventsURL,
+		themeName: opts.Theme,
 	}
 
 	if opts.Live {

@@ -1,0 +1,8 @@
+<div class="slide-title">
+{{ if body != "" }}<div class="title-logo">{{ raw: body }}</div>{{ end }}
+{{ if heading != "" }}<div class="title-text">{{ raw: heading }}</div>{{ else if body == "" }}<div class="title-text">{{ presentation.Title }}</div>{{ end }}
+{{ if presentation.Subtitle != "" }}<div class="title-subtitle">{{ presentation.Subtitle }}</div>{{ end }}
+{{ if presentation.Event != "" }}<div class="title-event"><span class="label">{{ presentation.Event }}{{ if presentation.Date != "" }} <span class="sep">/</span> {{ presentation.Date }}{{ end }}</span></div>{{ end }}
+{{ if avatar != "" }}<div class="title-avatar"><img src="{{ avatar }}" alt=""></div>{{ end }}
+{{ if presenter != "" }}<div class="title-presenter">{{ presenter }}</div>{{ end }}
+</div>

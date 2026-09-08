@@ -63,7 +63,7 @@ presentmd serve example/presentation
 
 ```
 presentmd serve [<flags>] <dir>
-presentmd render <dir> <target>
+presentmd render [<flags>] <dir> <target>
 ```
 
 `serve` answers on `--listen`, `127.0.0.1:8080` by default, and opens a browser
@@ -79,6 +79,18 @@ every image inlined as data URIs. A deck with a loading or rendering problem
 writes nothing and the command fails. What the export could not carry, an avatar
 it could not fetch or a video background, is printed beside the file it did
 write.
+
+`--theme` on either loads that theme instead of the one `presentation.yaml`
+names, as an embedded name or a path to a theme directory. A relative path is
+read from the directory you type it in rather than from the deck, so a deck is
+tried against a theme beside it without editing the deck:
+
+```
+presentmd serve --theme ./themes/choria example/presentation
+```
+
+`serve` keeps the override across a reload, so editing a slide does not put the
+deck's own theme back. `PRESENTMD_THEME` sets it for a shell.
 
 `--debug` on either raises the log level.
 

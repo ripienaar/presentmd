@@ -119,7 +119,7 @@ type Theme struct {
 // theme is why they name it. Deck assets stay confined to the deck directory,
 // which is the tree the binary was pointed at.
 func LoadTheme(name string, deckDir string) (*Theme, error) {
-	if isDirectoryTheme(name) {
+	if IsDirectoryTheme(name) {
 		return loadDirectoryTheme(name, deckDir)
 	}
 
@@ -137,10 +137,13 @@ func LoadTheme(name string, deckDir string) (*Theme, error) {
 	return newTheme(name, "", sub)
 }
 
-// isDirectoryTheme is the interview's rule for telling the two forms apart. Both
-// separators count, so a Windows path in a presentation.yaml written on Windows
-// is read as the directory it is.
-func isDirectoryTheme(name string) bool {
+// IsDirectoryTheme reports whether name is a path to a theme directory rather
+// than the name of an embedded theme. Both separators count, so a Windows path
+// in a presentation.yaml written on Windows is read as the directory it is. It
+// is exported because a caller naming a theme from somewhere other than the
+// deck, such as a command line flag, resolves a relative path against its own
+// directory rather than the deck's.
+func IsDirectoryTheme(name string) bool {
 	return strings.ContainsRune(name, '/') || strings.ContainsRune(name, filepath.Separator)
 }
 

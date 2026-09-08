@@ -1,0 +1,545 @@
+/*
+ * Choria.
+ *
+ * The ground is the blue the logomark sits on, the accent is the green of the
+ * mark itself, and the type is white. Dosis carries the headings and the prose;
+ * code falls back to the machine's mono, since Dosis has no monospace cut.
+ *
+ * The logomark is painted large and faint into the bottom right of every slide,
+ * turned off its axis so it runs up and to the left across about a third of the
+ * page. It is drawn from the stylesheet rather than from a template, so it
+ * resolves against the theme directory and travels with an export.
+ *
+ * The Dosis files ship with the theme, so a deck looks the same on a machine
+ * that has never installed it.
+ */
+
+@font-face {
+  font-family: Dosis;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/dosis-400-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Dosis;
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/dosis-500-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Dosis;
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/dosis-600-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Dosis;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("fonts/dosis-700-latin.woff2") format("woff2");
+}
+
+:root {
+  --bg: #2a395b;
+  --surface: #223049;
+  --surface-2: #1e2a41;
+  --ink: #ffffff;
+  --ink-2: rgba(255, 255, 255, 0.9);
+  --ink-3: rgba(255, 255, 255, 0.58);
+  --rule: rgba(255, 255, 255, 0.18);
+  --accent: #66c187;
+  --accent-2: #8ed4a6;
+  --accent-3: rgba(102, 193, 135, 0.45);
+
+  /* The slide is laid out in its own pixel space, 1280 by 720 for 16:9, which
+     reveal scales to the window. Reveal core sets no base size, so it is set
+     here and every em below is a multiple of it. */
+  --slide-font-size: 40px;
+
+  /* What a slide's text_size moves. The body reads one and the code reads the
+     other, so a step moves both by the same proportion. */
+  --body-scale: 1;
+  --code-scale: 1;
+
+  /* The watermark, in one place, so the mark grows or fades as one thing. */
+  --mark-size: 620px;
+  --mark-opacity: 0.13;
+}
+
+/* Dosis runs narrow and light, so every size below is a touch larger than the
+   same slide would want in a grotesque, and the tracking is opened slightly. */
+
+.reveal .slides section[data-text-size="small"] {
+  --body-scale: 0.85;
+  --code-scale: 0.85;
+}
+
+.reveal .slides section[data-text-size="large"] {
+  --body-scale: 1.18;
+  --code-scale: 1.18;
+}
+
+.reveal .slides section[data-text-size="huge"] {
+  --body-scale: 1.4;
+  --code-scale: 1.4;
+}
+
+.reveal {
+  font-size: var(--slide-font-size);
+  font-family: var(--font-body);
+  color: var(--ink-2);
+  font-weight: 400;
+  line-height: 1.42;
+}
+
+/* The ground is painted on the viewport alone. Reveal draws a slide's own
+   background in a layer behind .slides, so painting .slides too would cover it
+   and leave background: on a slide showing as a border around the frame. */
+.reveal-viewport {
+  background: var(--bg);
+}
+
+.reveal .slides section {
+  height: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.reveal h1,
+.reveal h2,
+.reveal h3 {
+  font-family: var(--font-heading);
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  margin: 0;
+  text-transform: none;
+}
+
+.reveal a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-3);
+}
+
+.reveal strong {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+
+.reveal em {
+  color: var(--ink);
+  font-style: italic;
+}
+
+.reveal p {
+  margin: 0 0 0.45em;
+}
+
+.reveal ul,
+.reveal ol {
+  display: block;
+  margin-left: 0.6em;
+  padding-left: 0.7em;
+}
+
+.reveal li {
+  margin: 0.3em 0;
+}
+
+.reveal li::marker {
+  color: var(--accent);
+}
+
+.reveal code,
+.reveal pre {
+  font-family: var(--font-mono);
+}
+
+.reveal :not(pre) > code {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0.04em 0.24em;
+  font-size: 0.68em;
+  color: var(--accent-2);
+}
+
+.reveal blockquote {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  border-radius: 0 5px 5px 0;
+  box-shadow: none;
+  color: var(--ink-2);
+  width: auto;
+  margin: 0.4em 0;
+  padding: 0.4em 0.7em;
+  font-style: normal;
+  font-size: 0.82em;
+}
+
+.reveal blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.reveal table {
+  margin: 0.3em 0;
+  border-collapse: collapse;
+  font-size: 0.86em;
+}
+
+.reveal table th {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.8em;
+  color: var(--accent);
+  border-bottom: 1px solid var(--accent-3);
+}
+
+.reveal table th,
+.reveal table td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.25em 0.7em;
+  text-align: left;
+}
+
+.reveal table td {
+  color: var(--ink-2);
+}
+
+.reveal hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 0.5em 0;
+}
+
+/*
+ * The frame, and the mark inside it.
+ *
+ * The mark is a pseudo element of the frame rather than of the viewport, so it
+ * sits above a slide's own background and below the slide's own type. It is
+ * anchored past the top right corner and runs down and to the left across about
+ * a third of the page. A slide that names a background of its own carries enough
+ * picture already, so the mark is left off there.
+ *
+ * Both selectors are scoped under .slides. Reveal copies a section's class onto
+ * the element it draws that slide's background with, so a bare .slide-title
+ * matches that element too and paints a second mark, at the size of the window
+ * rather than of the slide. The backgrounds layer is a sibling of .slides, so
+ * naming .slides leaves it out.
+ */
+
+.reveal .slides .slide-frame,
+.reveal .slides .slide-title {
+  position: relative;
+  overflow: hidden;
+}
+
+.reveal .slides .slide-frame::before,
+.reveal .slides .slide-title::before {
+  content: "";
+  position: absolute;
+  right: calc(var(--mark-size) * -0.1);
+  top: calc(var(--mark-size) * -0.12);
+  width: var(--mark-size);
+  height: var(--mark-size);
+  background: url("images/logomark.svg") no-repeat center / contain;
+  opacity: var(--mark-opacity);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.reveal .slides section[data-background-image] .slide-frame::before,
+.reveal .slides section[data-background-video] .slide-frame::before,
+.reveal .slides section[data-background-color] .slide-frame::before,
+.reveal .slides section[data-background-image] .slide-title::before,
+.reveal .slides section[data-background-color] .slide-title::before {
+  display: none;
+}
+
+.slide-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 34px 64px 0 64px;
+}
+
+/* Everything the templates write stands above the mark. */
+.reveal .slides .slide-frame > *,
+.reveal .slides .slide-title > * {
+  position: relative;
+  z-index: 1;
+}
+
+.slide-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.reveal .slide-heading {
+  flex: 0 0 auto;
+  font-size: 1.55em;
+  font-weight: 700;
+  color: var(--ink);
+  padding-bottom: 0.18em;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 0.8em;
+}
+
+/* The body is set smaller than the furniture around it, so more of a slide fits
+   before it runs past the footer. */
+.reveal .slide-body .body,
+.reveal .slide-columns .columns {
+  font-size: calc(0.72em * var(--body-scale));
+}
+
+.slide-caption {
+  font-size: 0.46em;
+  color: var(--ink-3);
+  margin-top: 0.7em;
+}
+
+.slide-caption strong {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.slide-cta {
+  font-family: var(--font-heading);
+  color: var(--accent);
+  font-size: 1.05em;
+  font-weight: 700;
+  margin-top: 0.5em;
+}
+
+.slide-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  border-top: 1px solid var(--rule);
+  padding: 10px 0 14px 0;
+  font-size: 0.34em;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+}
+
+.slide-footer .sep {
+  color: var(--rule);
+  padding: 0 0.5em;
+}
+
+.slide-footer .num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* A label: the uppercase green run used for the event line and the contact
+   keys. */
+.label {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 0.34em;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* title, the one style with no footer */
+
+.slide-title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding: 64px;
+  box-sizing: border-box;
+}
+
+.slide-title .title-logo {
+  margin-bottom: 0.5em;
+}
+
+.slide-title .title-logo img {
+  max-height: 220px;
+  max-width: 60%;
+}
+
+.slide-title .title-text {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 2em;
+  color: var(--ink);
+  letter-spacing: 0.002em;
+  line-height: 1.08;
+}
+
+.slide-title .title-subtitle {
+  font-size: 0.66em;
+  font-weight: 400;
+  color: var(--accent-2);
+  margin-top: 0.3em;
+}
+
+.slide-title .title-event {
+  margin-top: 1.4em;
+  padding-top: 0.9em;
+  border-top: 2px solid var(--accent);
+  max-width: 62%;
+}
+
+.slide-title .title-presenter {
+  font-size: 0.62em;
+  color: var(--ink-2);
+  margin-top: 0.45em;
+}
+
+.slide-title .title-avatar {
+  margin-top: 0.7em;
+}
+
+.slide-title .title-avatar img {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--accent);
+}
+
+/* section, one statement beside a green rule */
+
+.slide-section .slide-body {
+  justify-content: center;
+}
+
+.slide-section .slide-heading {
+  font-size: 2.5em;
+  border-bottom: none;
+  border-left: 6px solid var(--accent);
+  padding: 0 0 0 0.28em;
+  margin: 0;
+  line-height: 1.08;
+}
+
+/* content */
+
+.slide-content .slide-body img {
+  max-height: 340px;
+  max-width: 100%;
+  display: block;
+  margin: 0.3em 0;
+}
+
+/* columns */
+
+.slide-columns .columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 2.2em;
+  align-items: start;
+}
+
+/* code */
+
+.slide-code pre {
+  width: 100%;
+  margin: 0;
+  box-shadow: none;
+  /* Off the slide's own scale rather than off the body it sits in. An em here
+     would compound with the body's own reduction and shrink the code twice. */
+  font-size: calc(var(--slide-font-size) * 0.4 * var(--code-scale));
+  line-height: 1.5;
+}
+
+.reveal pre code {
+  background: var(--surface-2);
+  border: 1px solid var(--rule);
+  padding: 0.9em 1.1em;
+  border-radius: 5px;
+  max-height: none;
+  overflow: visible;
+  display: block;
+}
+
+/* chroma paints its own ground on the highlighted block, which would sit as a
+   panel inside this theme's own. The block keeps one ground. */
+.reveal pre code .chroma,
+.reveal pre .chroma {
+  background: transparent;
+}
+
+/* image */
+
+.slide-image img {
+  max-height: 400px;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  background: var(--surface);
+}
+
+/* closing */
+
+.slide-closing .contacts {
+  display: grid;
+  grid-template-columns: max-content auto;
+  gap: 0.5em 1.1em;
+  align-items: baseline;
+  margin: 0.2em 0 0.6em 0;
+}
+
+.slide-closing .contacts .label {
+  text-align: right;
+}
+
+.slide-closing .contacts .value {
+  font-size: 0.66em;
+  color: var(--ink);
+}
+
+/*
+ * Printing, which is how a deck becomes a PDF.
+ *
+ * Reveal's print view puts each slide in a page element and centers it by
+ * measuring the slide's content and setting the section's top to half the space
+ * left over. This theme also gives the section the full height of its page, so
+ * the two compound and the footer falls off the bottom. Pinning the section to
+ * the top leaves this theme's own frame to place the slide, as it does on
+ * screen.
+ */
+
+@media print {
+  .print-pdf .reveal .slides section {
+    top: 0 !important;
+    height: 100% !important;
+  }
+
+  /* The pages are printed on the blue, so the ground is asked for on the
+     elements a print engine actually paints. */
+  .print-pdf,
+  .print-pdf .reveal,
+  .print-pdf .slides section {
+    background: var(--bg) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

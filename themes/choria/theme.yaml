@@ -1,0 +1,13 @@
+# Choria: the logomark's own blue as the ground, its green as the accent, and
+# Dosis in every role that is not code.
+code_style: nord
+
+split_styles:
+  - columns
+
+transition: fade
+
+fonts:
+  heading: 'Dosis, ui-rounded, "Trebuchet MS", ui-sans-serif, system-ui, sans-serif'
+  body: 'Dosis, ui-rounded, "Trebuchet MS", ui-sans-serif, system-ui, sans-serif'
+  mono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace'

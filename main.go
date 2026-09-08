@@ -52,6 +52,7 @@ var version = "development"
 type command struct {
 	path   string
 	target string
+	theme  string
 	listen string
 	noOpen bool
 	debug  bool
@@ -89,10 +90,12 @@ func newApp(cmd *command, serveAction fisk.Action, renderAction fisk.Action) *fi
 	serve.Arg("dir", "The deck directory to serve").Default(".").StringVar(&cmd.path)
 	serve.Flag("listen", "The address to listen on as host:port, port 0 picks a free one").Envar("PRESENTMD_LISTEN").Default(defaultListen).StringVar(&cmd.listen)
 	serve.Flag("no-open", "Does not open a browser on start").Envar("PRESENTMD_NO_OPEN").UnNegatableBoolVar(&cmd.noOpen)
+	serve.Flag("theme", "Uses this theme instead of the one presentation.yaml names").Envar("PRESENTMD_THEME").StringVar(&cmd.theme)
 
 	render := app.Command("render", "Writes one deck as a single self contained html file").Action(renderAction)
 	render.Arg("dir", "The deck directory to render").Required().StringVar(&cmd.path)
 	render.Arg("target", "The html file to write").Required().StringVar(&cmd.target)
+	render.Flag("theme", "Uses this theme instead of the one presentation.yaml names").Envar("PRESENTMD_THEME").StringVar(&cmd.theme)
 
 	return app
 }
@@ -108,6 +111,33 @@ func (c *command) prepare() {
 	if c.debug && c.level != nil {
 		c.level.Set(slog.LevelDebug)
 	}
+}
+
+// themeOverride is what --theme named, empty when it was not given. A directory
+// theme is made absolute here, since present resolves a relative theme path
+// against the deck directory and the person typing the flag means the directory
+// they typed it in.
+func (c *command) themeOverride() (string, error) {
+	if c.theme == "" || !present.IsDirectoryTheme(c.theme) {
+		return c.theme, nil
+	}
+
+	return filepath.Abs(c.theme)
+}
+
+// themeName is the theme the run loads: the one --theme named, or the one
+// presentation.yaml does.
+func (c *command) themeName(deck *present.Deck) (string, error) {
+	override, err := c.themeOverride()
+	if err != nil {
+		return "", err
+	}
+
+	if override != "" {
+		return override, nil
+	}
+
+	return deck.Presentation.Theme, nil
 }
 
 func (c *command) serveAction(_ *fisk.ParseContext) error {
@@ -142,7 +172,12 @@ func (c *command) render() error {
 	}
 	defer deck.Close()
 
-	theme, err := present.LoadTheme(deck.Presentation.Theme, dir)
+	name, err := c.themeName(deck)
+	if err != nil {
+		return err
+	}
+
+	theme, err := present.LoadTheme(name, dir)
 	if err != nil {
 		return err
 	}
@@ -179,17 +214,33 @@ func (c *command) serve(ctx context.Context) error {
 		return err
 	}
 
-	theme, err := present.LoadTheme(deck.Presentation.Theme, dir)
+	override, err := c.themeOverride()
 	if err != nil {
 		deck.Close()
 
 		return err
 	}
 
+	name := override
+	if name == "" {
+		name = deck.Presentation.Theme
+	}
+
+	theme, err := present.LoadTheme(name, dir)
+	if err != nil {
+		deck.Close()
+
+		return err
+	}
+
+	// The override is handed to the handler as well, since the watcher reads the
+	// deck again on every save and would otherwise put presentation.yaml's own
+	// theme back the first time a slide is edited.
 	handler, err := present.Handler(deck, theme, present.HandlerOptions{
 		Log:    c.log,
 		Live:   true,
 		Report: reportProblems,
+		Theme:  override,
 	})
 	if err != nil {
 		deck.Close()

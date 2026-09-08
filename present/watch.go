@@ -108,11 +108,16 @@ func (h *DeckHandler) reload(dir string) {
 		return
 	}
 
-	theme, err := LoadTheme(deck.Presentation.Theme, dir)
+	name := deck.Presentation.Theme
+	if h.themeName != "" {
+		name = h.themeName
+	}
+
+	theme, err := LoadTheme(name, dir)
 	if err != nil {
 		deck.Close()
 
-		h.log.Error("Cannot load the theme, serving the page from before the change", "dir", dir, "theme", deck.Presentation.Theme, "error", err)
+		h.log.Error("Cannot load the theme, serving the page from before the change", "dir", dir, "theme", name, "error", err)
 
 		return
 	}
