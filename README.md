@@ -222,6 +222,7 @@ on the projector.
 | `presenter`        | a block of `name`, `surname`, `avatar` and `github`                |
 | `contact_email`    | placed in the footer and on the closing slide                      |
 | `contact_web`      | placed in the footer and on the closing slide                      |
+| `contact_web_label` | the label the closing slide shows `contact_web` under, `blog` by default |
 | `contact_social`   | a handle, placed in the footer and on the closing slide            |
 | `contact_social_network` | the network that handle is on, `Mastodon`, `Bluesky`, and the label the closing slide shows it under |
 
@@ -235,7 +236,9 @@ it once.
 
 `contact_social_network` is the label the closing slide shows `contact_social`
 under, so write it the way you want it read. A handle with no network is labeled
-`social`.
+`social`. `contact_web_label` does the same for `contact_web`, for an address
+that is a homepage or a docs site rather than a blog, and one with no label is
+labeled `blog`.
 
 `footer` replaces the line otherwise built from the presenter's name and the
 three contacts. Set one or the other, not both: a deck with a `footer` never

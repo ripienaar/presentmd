@@ -75,7 +75,11 @@ type Presentation struct {
 	Presenter       Presenter `json:"presenter,omitzero" yaml:"presenter,omitempty"`
 	ContactEmail    string    `json:"contact_email,omitempty" yaml:"contact_email,omitempty"`
 	ContactWeb      string    `json:"contact_web,omitempty" yaml:"contact_web,omitempty"`
-	ContactSocial   string    `json:"contact_social,omitempty" yaml:"contact_social,omitempty"`
+	// ContactWebLabel is the label the closing slide shows ContactWeb under, for
+	// a deck whose address is a homepage or a docs site rather than a blog. A
+	// deck that names none is labeled blog.
+	ContactWebLabel string `json:"contact_web_label,omitempty" yaml:"contact_web_label,omitempty"`
+	ContactSocial   string `json:"contact_social,omitempty" yaml:"contact_social,omitempty"`
 	// ContactSocialNetwork is the network ContactSocial is a handle on, and is
 	// the label the closing slide shows it under. A deck that names a handle and
 	// no network is labeled social, since the handle alone does not say which

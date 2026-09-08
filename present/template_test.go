@@ -173,6 +173,33 @@ func TestSocialLabelIsTheNetwork(t *testing.T) {
 	}
 }
 
+// TestWebLabelIsTheLabelTheDeckNamed pins the label on the web address, and
+// that a deck naming none reads blog.
+func TestWebLabelIsTheLabelTheDeckNamed(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		label string
+		want  string
+	}{
+		{name: "the label the deck named", label: "homepage", want: "homepage"},
+		{name: "no label", label: "", want: "blog"},
+		{name: "spaces alone are no label", label: "   ", want: "blog"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			show := &Presentation{ContactWeb: "https://devco.net", ContactWebLabel: tc.label}
+
+			contacts := contactsFor(show)
+			if len(contacts) != 1 {
+				t.Fatalf("contacts were %v, want the address alone", contacts)
+			}
+
+			if contacts[0].Label != tc.want {
+				t.Errorf("label was %q, want %q", contacts[0].Label, tc.want)
+			}
+		})
+	}
+}
+
 // TestSocialNetworkWithoutAHandleShowsNothing pins that naming a network and no
 // handle puts no empty row on the closing slide.
 func TestSocialNetworkWithoutAHandleShowsNothing(t *testing.T) {

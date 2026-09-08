@@ -119,15 +119,14 @@ func footerParts(show *Presentation, presenter string) []string {
 	return nonEmpty(presenter, show.ContactEmail, show.ContactWeb, show.ContactSocial)
 }
 
-// contactsFor pairs each contact with the label a theme shows it under. The
-// label for the web address is blog rather than web because that is what a
-// person in the audience reads, and the social handle is labeled with the
-// network the deck named it on.
+// contactsFor pairs each contact with the label a theme shows it under. The web
+// address and the social handle carry the labels the deck named them with, and
+// otherwise blog and social.
 func contactsFor(show *Presentation) []Contact {
 	pairs := []Contact{
 		{Label: socialLabel(show), Value: show.ContactSocial},
 		{Label: "email", Value: show.ContactEmail},
-		{Label: "blog", Value: show.ContactWeb},
+		{Label: webLabel(show), Value: show.ContactWeb},
 		{Label: "github", Value: show.Presenter.GitHub},
 	}
 
@@ -142,6 +141,18 @@ func contactsFor(show *Presentation) []Contact {
 	}
 
 	return contacts
+}
+
+// webLabel is the label the deck gives its web address, as the deck wrote it. A
+// deck that names none gets blog, which is what most decks put there and what
+// every deck written before the label existed means.
+func webLabel(show *Presentation) string {
+	label := strings.TrimSpace(show.ContactWebLabel)
+	if label == "" {
+		return "blog"
+	}
+
+	return label
 }
 
 // socialLabel is the network the social handle is on, as the deck wrote it. A
