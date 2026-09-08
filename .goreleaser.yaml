@@ -1,0 +1,40 @@
+version: 2
+project_name: presentmd
+
+release:
+  github:
+    owner: ripienaar
+    name: presentmd
+  name_template: "Release {{.Version}}"
+  draft: true
+
+builds:
+  - id: presentmd
+    binary: presentmd
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - name_template: "presentmd-{{.Version}}-{{.Os}}-{{.Arch}}"
+    wrap_in_directory: true
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - src: example/**/*
+        dst: example
+
+checksum:
+  name_template: "SHA256SUMS"
+  algorithm: sha256

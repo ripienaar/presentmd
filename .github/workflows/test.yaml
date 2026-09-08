@@ -1,0 +1,35 @@
+name: Test
+
+on:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        go: ["1.26", "1.27"]
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Render the example decks
+        run: |
+          go run . render example/presentation /tmp/presentation.html
+          go run . render example/themes /tmp/themes.html

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" width="460" height="120" role="img" aria-label="The presentmd wordmark">
+  <rect x="2" y="2" width="456" height="116" rx="14" fill="none" stroke="#0f6f6a" stroke-width="4"/>
+  <rect x="30" y="36" width="72" height="10" rx="5" fill="#0f6f6a"/>
+  <rect x="30" y="55" width="112" height="10" rx="5" fill="#0f6f6a" opacity="0.55"/>
+  <rect x="30" y="74" width="90" height="10" rx="5" fill="#0f6f6a" opacity="0.3"/>
+  <text x="176" y="74" font-family="ui-sans-serif, system-ui, sans-serif" font-size="34" font-weight="600" fill="#0f6f6a">presentmd</text>
+</svg>

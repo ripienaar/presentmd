@@ -1,0 +1,11 @@
+code_style: github
+
+split_styles:
+  - columns
+
+transition: none
+
+fonts:
+  heading: '"IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif'
+  body: '"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif'
+  mono: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace'

@@ -1,0 +1,458 @@
+/*
+ * The theme that ships in the binary: paper rather than white, teal for the
+ * accent, and IBM Plex in three roles. Condensed carries the headings and the
+ * small uppercase labels, Sans carries the prose, Mono carries the numbers and
+ * the code.
+ *
+ * A slide reads like a page of the board rather than like a poster, so the
+ * content is left aligned under a rule and the footer is quiet.
+ *
+ * The font files ship with the theme, so a deck looks the same on a machine
+ * that has never heard of IBM Plex and an exported file carries them inline.
+ */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-cond-500-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("fonts/ibm-plex-sans-cond-600-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-400-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("fonts/ibm-plex-mono-500-latin.woff2") format("woff2");
+}
+
+:root {
+  /* The board's own tokens, unchanged, so a slide and a board page are the
+     same paper and the same ink. */
+  --bg: #f2f3ef;
+  --surface: #fbfbf8;
+  --surface-2: #eaebe4;
+  --ink: #1f231d;
+  --ink-2: #43473f;
+  --ink-3: #6b6f65;
+  --rule: #dbdcd2;
+  --accent: #2c6570;
+  --accent-3: #bcd7dc;
+
+  /* The slide is laid out in its own pixel space, 1280 by 720 for 16:9, which
+     reveal scales to the window. Reveal core sets no base size, since that
+     normally comes from one of its own themes and none is vendored, so the
+     scale is set here and every em below is a multiple of it. */
+  --slide-font-size: 40px;
+
+  /* What a slide's text_size moves. The body reads one and the code reads the
+     other, so a step moves both by the same proportion. A slide that names
+     nothing, or names normal, carries no attribute and keeps these. */
+  --body-scale: 1;
+  --code-scale: 1;
+}
+
+/* The steps a slide asks for by name. The heading, the caption, the call to
+   action and the footer are the furniture the theme places at one height on
+   every slide, so they are left where they are. */
+.reveal .slides section[data-text-size="small"] {
+  --body-scale: 0.85;
+  --code-scale: 0.85;
+}
+
+.reveal .slides section[data-text-size="large"] {
+  --body-scale: 1.18;
+  --code-scale: 1.18;
+}
+
+.reveal .slides section[data-text-size="huge"] {
+  --body-scale: 1.4;
+  --code-scale: 1.4;
+}
+
+.reveal {
+  font-size: var(--slide-font-size);
+  font-family: var(--font-body);
+  color: var(--ink-2);
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+/* The paper is painted on the viewport alone. Reveal draws a slide's own
+   background in a layer behind .slides, so painting .slides too would cover it
+   and leave background: on a slide showing as a border around the frame. */
+.reveal-viewport {
+  background: var(--bg);
+}
+
+.reveal .slides section {
+  height: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.reveal h1,
+.reveal h2,
+.reveal h3 {
+  font-family: var(--font-heading);
+  color: var(--ink);
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  margin: 0;
+  text-transform: none;
+}
+
+.reveal a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.reveal strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Paragraphs part the way a board page parts them. */
+.reveal p {
+  margin: 0 0 0.45em;
+}
+
+.reveal ul,
+.reveal ol {
+  display: block;
+  margin-left: 0.6em;
+  padding-left: 0.6em;
+}
+
+.reveal li {
+  margin: 0.3em 0;
+}
+
+.reveal li::marker {
+  color: var(--accent-3);
+}
+
+.reveal code,
+.reveal pre {
+  font-family: var(--font-mono);
+}
+
+/* Inline code wears the board's own chip. */
+.reveal :not(pre) > code {
+  background: var(--surface-2);
+  border-radius: 3px;
+  padding: 0.05em 0.2em;
+  font-size: 0.76em;
+  color: var(--ink);
+}
+
+.reveal blockquote {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent-3);
+  border-radius: 0 5px 5px 0;
+  box-shadow: none;
+  width: auto;
+  margin: 0.4em 0;
+  padding: 0.4em 0.6em;
+  font-style: normal;
+  font-size: 0.76em;
+}
+
+.reveal table {
+  margin: 0.3em 0;
+  border-collapse: collapse;
+  font-size: 0.8em;
+}
+
+.reveal table th {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.8em;
+  color: var(--ink-2);
+}
+
+.reveal table th,
+.reveal table td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.25em 0.6em;
+  text-align: left;
+}
+
+/*
+ * The frame. Content sits under the heading's rule and the footer is pinned at
+ * the foot, so every slide of a talk carries its furniture at one height.
+ */
+
+.slide-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 34px 64px 0 64px;
+}
+
+.slide-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.reveal .slide-heading {
+  flex: 0 0 auto;
+  font-size: 1.5em;
+  padding-bottom: 0.22em;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 0.85em;
+}
+
+/* The body is set smaller than the furniture around it, so more of a slide
+   fits before it runs past the footer. The heading, the caption and the
+   footer keep their own sizes: this is the prose and the lists alone. */
+.reveal .slide-body .body,
+.reveal .slide-columns .columns {
+  font-size: calc(0.7em * var(--body-scale));
+}
+
+/* The caption reads as the board's own small print. */
+.slide-caption {
+  font-family: var(--font-mono);
+  font-size: 0.42em;
+  color: var(--ink-3);
+  margin-top: 0.7em;
+}
+
+.slide-caption strong {
+  font-weight: 500;
+  color: var(--ink-2);
+}
+
+.slide-cta {
+  font-family: var(--font-heading);
+  color: var(--accent);
+  font-size: 1.05em;
+  font-weight: 600;
+  margin-top: 0.5em;
+}
+
+.slide-footer {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  border-top: 1px solid var(--rule);
+  padding: 10px 0 14px 0;
+  font-family: var(--font-mono);
+  font-size: 0.3em;
+  color: var(--ink-3);
+}
+
+.slide-footer .sep {
+  color: var(--rule);
+  padding: 0 0.5em;
+}
+
+.slide-footer .num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* A label: the board's uppercase condensed run, used for the event line and
+   the contact keys. */
+.label {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 0.32em;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* title, the one style with no footer */
+
+.slide-title {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding: 64px;
+  box-sizing: border-box;
+}
+
+.slide-title .title-logo {
+  margin-bottom: 0.5em;
+}
+
+.slide-title .title-logo img {
+  max-height: 240px;
+  max-width: 60%;
+}
+
+.slide-title .title-text {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  font-size: 1.9em;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.slide-title .title-subtitle {
+  font-size: 0.62em;
+  color: var(--ink-3);
+  margin-top: 0.35em;
+}
+
+.slide-title .title-event {
+  margin-top: 1.5em;
+  padding-top: 0.9em;
+  border-top: 1px solid var(--rule);
+}
+
+.slide-title .title-presenter {
+  font-size: 0.62em;
+  color: var(--ink-2);
+  margin-top: 0.5em;
+}
+
+.slide-title .title-avatar {
+  margin-top: 0.7em;
+}
+
+.slide-title .title-avatar img {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--rule);
+}
+
+/* section, one statement beside a teal rule */
+
+.slide-section .slide-body {
+  justify-content: center;
+}
+
+.slide-section .slide-heading {
+  font-size: 2.4em;
+  border-bottom: none;
+  border-left: 5px solid var(--accent);
+  padding: 0 0 0 0.28em;
+  margin: 0;
+  line-height: 1.1;
+}
+
+/* content */
+
+.slide-content .slide-body img {
+  max-height: 340px;
+  display: block;
+  margin: 0.3em 0;
+}
+
+/* columns */
+
+.slide-columns .columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 2.2em;
+  align-items: start;
+}
+
+/* code, on the surface the board sets its own blocks on */
+
+.slide-code pre {
+  width: 100%;
+  margin: 0;
+  box-shadow: none;
+  /* Off the slide's own scale rather than off the body it sits in. An em here
+     would compound with the body's own reduction and shrink the code twice. */
+  font-size: calc(var(--slide-font-size) * 0.42 * var(--code-scale));
+  line-height: 1.5;
+}
+
+.reveal pre code {
+  background: var(--surface-2);
+  padding: 0.9em 1.1em;
+  border-radius: 5px;
+  max-height: none;
+  overflow: visible;
+  display: block;
+}
+
+/* image */
+
+.slide-image img {
+  max-height: 400px;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+}
+
+/* closing */
+
+.slide-closing .contacts {
+  display: grid;
+  grid-template-columns: max-content auto;
+  gap: 0.45em 1em;
+  align-items: baseline;
+  margin: 0.2em 0 0.6em 0;
+}
+
+.slide-closing .contacts .label {
+  text-align: right;
+}
+
+.slide-closing .contacts .value {
+  font-size: 0.62em;
+  color: var(--ink-2);
+}
+
+/*
+ * Printing, which is how a deck becomes a PDF.
+ *
+ * Reveal's print view puts each slide in a page element and centers it by
+ * measuring the slide's content and setting the section's top to half the space
+ * left over. This theme also gives the section the full height of its page and
+ * places the slide inside it, so the two compound and the footer falls off the
+ * bottom. Pinning the section to the top of its page leaves this theme's own
+ * frame to place the slide, as it does on screen.
+ */
+
+@media print {
+  .print-pdf .reveal .slides section {
+    top: 0 !important;
+    height: 100% !important;
+  }
+}

@@ -1,0 +1,16 @@
+title: Writing Slides in Markdown
+subtitle: A deck is a directory of files
+event: An Example Conference
+date: 2026-02-02
+theme: default
+aspect: "16:9"
+transition: fade
+transition_speed: default
+presenter:
+  name: Alex
+  surname: Rivera
+  avatar: images/avatar.svg
+contact_email: alex@example.net
+contact_web: https://example.net
+contact_social: "@alex@example.social"
+contact_social_network: Mastodon

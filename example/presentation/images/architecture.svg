@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 300" width="720" height="300" role="img" aria-label="A directory of markdown files rendered into a deck served in a browser">
+  <rect width="720" height="300" fill="#f3efe6"/>
+  <g font-family="ui-sans-serif, system-ui, sans-serif" font-size="17" fill="#1d2b2a">
+    <rect x="30" y="70" width="180" height="160" rx="10" fill="#ffffff" stroke="#0f6f6a" stroke-width="3"/>
+    <text x="120" y="102" text-anchor="middle" font-weight="600">deck/</text>
+    <text x="120" y="134" text-anchor="middle" font-size="15">presentation.yaml</text>
+    <text x="120" y="160" text-anchor="middle" font-size="15">01-title.md</text>
+    <text x="120" y="186" text-anchor="middle" font-size="15">02-content.md</text>
+    <text x="120" y="212" text-anchor="middle" font-size="15">images/</text>
+
+    <rect x="270" y="112" width="180" height="76" rx="10" fill="#0f6f6a"/>
+    <text x="360" y="150" text-anchor="middle" fill="#f3efe6" font-weight="600">presentmd</text>
+    <text x="360" y="172" text-anchor="middle" fill="#f3efe6" font-size="14">serve or render</text>
+
+    <rect x="510" y="70" width="180" height="160" rx="10" fill="#ffffff" stroke="#0f6f6a" stroke-width="3"/>
+    <text x="600" y="102" text-anchor="middle" font-weight="600">the deck</text>
+    <text x="600" y="140" text-anchor="middle" font-size="15">in a browser</text>
+    <text x="600" y="166" text-anchor="middle" font-size="15">or one HTML</text>
+    <text x="600" y="192" text-anchor="middle" font-size="15">file on disk</text>
+
+    <path d="M214 150 L266 150" stroke="#0f6f6a" stroke-width="3" marker-end="url(#tip)"/>
+    <path d="M454 150 L506 150" stroke="#0f6f6a" stroke-width="3" marker-end="url(#tip)"/>
+  </g>
+  <defs>
+    <marker id="tip" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#0f6f6a"/>
+    </marker>
+  </defs>
+</svg>

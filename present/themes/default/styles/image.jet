@@ -1,0 +1,8 @@
+<div class="slide-frame">
+{{ if heading != "" }}<h1 class="slide-heading">{{ raw: heading }}</h1>{{ end }}
+<div class="slide-body">
+<div class="body">{{ raw: body }}</div>
+{{ if caption != "" }}<div class="slide-caption">{{ raw: caption }}</div>{{ end }}
+</div>
+{{ include "_footer.jet" }}
+</div>

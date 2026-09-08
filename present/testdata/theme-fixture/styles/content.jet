@@ -1,0 +1,5 @@
+<h2>{{ raw: heading }}</h2>
+{{ raw: body }}
+{{ if caption != "" }}<p class="caption">{{ raw: caption }}</p>{{ end }}
+<p class="style">{{ slide.PageStyle }}</p>
+{{ include "_footer.jet" }}

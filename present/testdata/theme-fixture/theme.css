@@ -1,0 +1,15 @@
+/* A theme that ships a font file, which is how the asset collector reaches a
+   url() target rather than only the paths the slides name. */
+@font-face {
+  font-family: "Fixture Sans";
+  src: url("fonts/fixture-sans.woff2") format("woff2");
+}
+
+.reveal {
+  font-family: var(--font-body);
+}
+
+.reveal h1,
+.reveal h2 {
+  font-family: var(--font-heading);
+}

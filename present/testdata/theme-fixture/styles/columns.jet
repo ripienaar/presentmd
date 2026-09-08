@@ -1,0 +1,3 @@
+<h2>{{ raw: heading }}</h2>
+<div class="left">{{ raw: left }}</div>
+<div class="right">{{ raw: right }}</div>

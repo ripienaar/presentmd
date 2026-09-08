@@ -1,0 +1,4 @@
+<h1>{{ raw: heading }}</h1>
+<p class="subtitle">{{ presentation.Subtitle }}</p>
+<p class="presenter">{{ presenter }}</p>
+{{ if avatar != "" }}<img class="avatar" src="{{ avatar }}">{{ end }}

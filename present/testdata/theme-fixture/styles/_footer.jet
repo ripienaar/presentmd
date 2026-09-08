@@ -1,0 +1,1 @@
+<p class="deck-footer">{{ range i, part := footer }}{{ if i > 0 }} | {{ end }}{{ part }}{{ end }}</p>

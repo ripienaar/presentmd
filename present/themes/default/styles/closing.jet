@@ -1,0 +1,9 @@
+<div class="slide-frame">
+{{ if heading != "" }}<h1 class="slide-heading">{{ raw: heading }}</h1>{{ end }}
+<div class="slide-body">
+{{ if len(contacts) > 0 }}<div class="contacts">{{ range _, contact := contacts }}<div class="label">{{ contact.Label }}</div><div class="value">{{ contact.Value }}</div>{{ end }}</div>{{ end }}
+{{ if body != "" }}<div class="body">{{ raw: body }}</div>{{ end }}
+{{ if cta != "" }}<div class="slide-cta">{{ raw: cta }}</div>{{ end }}
+</div>
+{{ include "_footer.jet" }}
+</div>

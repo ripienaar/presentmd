@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720" role="img" aria-label="A pale background with faint rules">
+  <rect width="1280" height="720" fill="#e7eeec"/>
+  <g stroke="#0f6f6a" stroke-width="2" opacity="0.18">
+    <path d="M0 180 H1280"/>
+    <path d="M0 360 H1280"/>
+    <path d="M0 540 H1280"/>
+    <path d="M320 0 V720"/>
+    <path d="M640 0 V720"/>
+    <path d="M960 0 V720"/>
+  </g>
+  <circle cx="960" cy="180" r="120" fill="#0f6f6a" opacity="0.12"/>
+</svg>

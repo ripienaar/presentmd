@@ -1,0 +1,7 @@
+code_style: monokai
+split_styles:
+  - columns
+fonts:
+  body: Fixture Sans, sans-serif
+  heading: Fixture Display, serif
+  mono: Fixture Mono, monospace

@@ -1,0 +1,4 @@
+<h2>{{ raw: heading }}</h2>
+{{ range _, contact := contacts }}<p class="contact">{{ contact.Label }}={{ contact.Value }}</p>{{ end }}
+{{ if cta != "" }}<p class="cta">{{ raw: cta }}</p>{{ end }}
+{{ include "_footer.jet" }}

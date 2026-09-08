@@ -1,0 +1,4 @@
+<div class="slide-frame">
+<div class="slide-body"><h1 class="slide-heading">{{ raw: heading }}</h1></div>
+{{ include "_footer.jet" }}
+</div>

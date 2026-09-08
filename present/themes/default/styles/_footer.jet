@@ -1,0 +1,4 @@
+<div class="slide-footer">
+<div>{{ if len(footer) > 0 }}{{ range i, part := footer }}{{ if i > 0 }}<span class="sep">|</span>{{ end }}{{ part }}{{ end }}{{ end }}</div>
+<div class="num">{{ slide.Number }}</div>
+</div>
