@@ -3,10 +3,11 @@
 //	presentmd serve [<flags>] <dir>
 //	presentmd render <dir> <target>
 //
-// A deck is a directory holding presentation.yaml and one markdown file per
-// slide. serve answers on a local port and reloads the browser as the files
-// change; render writes the whole deck as one self contained HTML file that
-// opens from disk with no network.
+// A deck is a directory holding either presentation.md, which carries the whole
+// deck, or presentation.yaml with one markdown file per slide. serve answers on
+// a local port and reloads the browser as the files change; render writes the
+// whole deck as one self contained HTML file that opens from disk with no
+// network.
 package main
 
 import (

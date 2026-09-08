@@ -478,3 +478,255 @@ func TestDeckCloseWithoutRoot(t *testing.T) {
 		t.Errorf("closing a deck that never loaded returned %v", err)
 	}
 }
+
+// singleFileDeck is the deck the presentation.md tests read: the presentation as
+// frontmatter, a slide for every break, a break inside a fence that is the
+// deck's own text, and a thematic break that still divides a columns slide.
+const singleFileDeck = "---\n" +
+	"title: One File\n" +
+	"subtitle: Every slide in it\n" +
+	"theme: default\n" +
+	"---\n" +
+	"\n" +
+	"+++\n" +
+	"page_style: title\n" +
+	"+++\n" +
+	"\n" +
+	"+++\n" +
+	"page_style: content\n" +
+	"caption: A caption\n" +
+	"cta: Do the thing\n" +
+	"text_size: large\n" +
+	"+++\n" +
+	"\n" +
+	"# A Heading\n" +
+	"\n" +
+	"The body.\n" +
+	"\n" +
+	"+++\n" +
+	"page_style: code\n" +
+	"+++\n" +
+	"\n" +
+	"```markdown\n" +
+	"+++\n" +
+	"page_style: content\n" +
+	"+++\n" +
+	"```\n" +
+	"\n" +
+	"+++\n" +
+	"page_style: columns\n" +
+	"+++\n" +
+	"\n" +
+	"Left\n" +
+	"\n" +
+	"---\n" +
+	"\n" +
+	"Right\n"
+
+// TestLoadMarkdownDeck covers the whole deck in one file: the presentation from
+// the frontmatter, one slide per break in the order they were written, and the
+// two things inside a slide that are not a break, a fenced code block holding
+// one and the thematic break a columns slide divides at.
+func TestLoadMarkdownDeck(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, filepath.Join(dir, presentationMarkdownFile), singleFileDeck)
+
+	deck := load(t, dir)
+
+	for _, problem := range deck.Problems {
+		t.Errorf("unexpected problem: %s: %s", problem.Path, problem.Message)
+	}
+
+	if deck.Source != presentationMarkdownFile {
+		t.Errorf("source %q, want %s", deck.Source, presentationMarkdownFile)
+	}
+
+	show := deck.Presentation
+
+	if show.Title != "One File" || show.Subtitle != "Every slide in it" || show.Theme != "default" {
+		t.Errorf("presentation was %+v", show)
+	}
+
+	if show.Aspect != "16:9" || show.Width != 1280 {
+		t.Errorf("aspect %q is %d wide, want the default applied as it is for the other form", show.Aspect, show.Width)
+	}
+
+	cases := []struct {
+		number    int
+		path      string
+		pageStyle string
+		caption   string
+		cta       string
+		textSize  string
+		markdown  string
+	}{
+		{number: 1, path: "presentation.md:7", pageStyle: "title"},
+		{
+			number:    2,
+			path:      "presentation.md:11",
+			pageStyle: "content",
+			caption:   "A caption",
+			cta:       "Do the thing",
+			textSize:  "large",
+			markdown:  "# A Heading\n\nThe body.",
+		},
+		{
+			number:    3,
+			path:      "presentation.md:22",
+			pageStyle: "code",
+			markdown:  "```markdown\n+++\npage_style: content\n+++\n```",
+		},
+		{
+			number:    4,
+			path:      "presentation.md:32",
+			pageStyle: "columns",
+			markdown:  "Left\n\n---\n\nRight",
+		},
+	}
+
+	if len(deck.Slides) != len(cases) {
+		t.Fatalf("loaded %d slides, want %d:\n%s", len(deck.Slides), len(cases), formatSlides(deck.Slides))
+	}
+
+	for i, want := range cases {
+		slide := deck.Slides[i]
+
+		if slide.Number != want.number || slide.Path != want.path {
+			t.Errorf("slide %d is number %d at %q, want %d at %q", i, slide.Number, slide.Path, want.number, want.path)
+		}
+
+		if slide.PageStyle != want.pageStyle || slide.Caption != want.caption || slide.CTA != want.cta {
+			t.Errorf("slide %d: page_style %q caption %q cta %q", i, slide.PageStyle, slide.Caption, slide.CTA)
+		}
+
+		if slide.TextSize != want.textSize {
+			t.Errorf("slide %d: text_size %q, want %q", i, slide.TextSize, want.textSize)
+		}
+
+		if slide.Markdown != want.markdown {
+			t.Errorf("slide %d markdown:\n%s\nwant:\n%s", i, slide.Markdown, want.markdown)
+		}
+	}
+}
+
+// TestLoadMarkdownDeckProblems covers what a single file gets wrong, each
+// reported against the line the slide opens on rather than against the file.
+func TestLoadMarkdownDeckProblems(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, filepath.Join(dir, presentationMarkdownFile), "---\n"+
+		"title: Problems\n"+
+		"theme: default\n"+
+		"---\n"+
+		"\n"+
+		"An orphan paragraph.\n"+
+		"\n"+
+		"+++\n"+
+		"caption: No page style\n"+
+		"+++\n"+
+		"\n"+
+		"# Dropped\n"+
+		"\n"+
+		"+++\n"+
+		"page_style: content\n"+
+		"slide: 9\n"+
+		"theme: other\n"+
+		"+++\n"+
+		"\n"+
+		"# Kept\n")
+
+	deck := load(t, dir)
+
+	wants := []struct {
+		path    string
+		message string
+	}{
+		{path: "presentation.md:6", message: "text above the first +++ belongs to no slide"},
+		{path: "presentation.md:8", message: "missing page_style"},
+		{path: "presentation.md:14", message: "slide is set by the order in the file"},
+		{path: "presentation.md:14", message: "theme is set per presentation"},
+	}
+
+	for _, want := range wants {
+		if !hasProblem(deck.Problems, want.path, want.message) {
+			t.Errorf("no problem %q at %s, got:\n%s", want.message, want.path, formatProblems(deck.Problems))
+		}
+	}
+
+	// The slide without a page style is the only one dropped, and the one that
+	// named a number keeps its place rather than that number.
+	if len(deck.Slides) != 1 {
+		t.Fatalf("loaded %d slides, want the one that has a page style:\n%s", len(deck.Slides), formatSlides(deck.Slides))
+	}
+
+	if deck.Slides[0].Number != 1 {
+		t.Errorf("slide number %d, want 1: order in the file is what numbers a slide", deck.Slides[0].Number)
+	}
+}
+
+// TestLoadMarkdownDeckWithoutFrontmatter covers a file that opens with no
+// presentation, which still loads its slides and says what is missing.
+func TestLoadMarkdownDeckWithoutFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, filepath.Join(dir, presentationMarkdownFile), "+++\npage_style: title\n+++\n\n# A Talk\n")
+
+	deck := load(t, dir)
+
+	if !hasProblem(deck.Problems, presentationMarkdownFile, "no yaml frontmatter") {
+		t.Errorf("no problem naming the missing frontmatter, got:\n%s", formatProblems(deck.Problems))
+	}
+
+	if !hasProblem(deck.Problems, presentationMarkdownFile, "missing theme") {
+		t.Errorf("no problem naming the missing theme, got:\n%s", formatProblems(deck.Problems))
+	}
+}
+
+// TestLoadMarkdownDeckWins covers a directory holding both forms: the single
+// file is the deck, and the pair beside it is named rather than half read.
+func TestLoadMarkdownDeckWins(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, filepath.Join(dir, presentationMarkdownFile), "---\ntitle: The One File\ntheme: default\n---\n\n+++\npage_style: title\n+++\n")
+	writeFile(t, filepath.Join(dir, presentationFile), "title: The Pair\ntheme: default\n")
+	writeFile(t, filepath.Join(dir, "01-title.md"), "---\npage_style: title\n---\n\n# From the pair\n")
+
+	deck := load(t, dir)
+
+	if deck.Presentation.Title != "The One File" {
+		t.Errorf("title %q, want the one presentation.md holds", deck.Presentation.Title)
+	}
+
+	if !hasProblem(deck.Problems, presentationMarkdownFile, "presentation.yaml is beside it") {
+		t.Errorf("no problem naming the file that is not being read, got:\n%s", formatProblems(deck.Problems))
+	}
+
+	if len(deck.Slides) != 1 || deck.Slides[0].Path != "presentation.md:6" {
+		t.Fatalf("loaded %d slides, want the one from presentation.md:\n%s", len(deck.Slides), formatSlides(deck.Slides))
+	}
+}
+
+// TestLoadDeckSourceIsThePair pins the source of a deck written the other way,
+// which is what a problem against the presentation names.
+func TestLoadDeckSourceIsThePair(t *testing.T) {
+	deck := load(t, "testdata/deck")
+
+	if deck.Source != presentationFile {
+		t.Errorf("source %q, want %s", deck.Source, presentationFile)
+	}
+
+	if deck.presentationPath() != presentationFile {
+		t.Errorf("presentation path %q, want %s", deck.presentationPath(), presentationFile)
+	}
+}
+
+// TestPresentationPathWithoutSource covers a Deck built without LoadDeck, which
+// the renderer is handed in tests and by callers that assemble one.
+func TestPresentationPathWithoutSource(t *testing.T) {
+	deck := &Deck{}
+
+	if deck.presentationPath() != presentationFile {
+		t.Errorf("presentation path %q, want %s", deck.presentationPath(), presentationFile)
+	}
+}

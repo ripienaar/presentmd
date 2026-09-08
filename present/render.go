@@ -155,7 +155,7 @@ func RenderDeck(deck *Deck, theme *Theme, opts RenderOptions) (*RenderedDeck, er
 	show := &deck.Presentation
 	data := NewTemplateData(show)
 
-	problem := checkAvatar(show)
+	problem := checkAvatar(deck.presentationPath(), show)
 	if problem != nil {
 		data.Avatar = ""
 
@@ -166,7 +166,7 @@ func RenderDeck(deck *Deck, theme *Theme, opts RenderOptions) (*RenderedDeck, er
 		data.Avatar = *opts.Avatar
 	}
 
-	move, problems := resolveTransition(show, theme)
+	move, problems := resolveTransition(deck.presentationPath(), show, theme)
 	out.Problems = append(out.Problems, problems...)
 
 	var sections strings.Builder
@@ -306,7 +306,7 @@ func shortDigest(text string) string {
 // checkAvatar reports a presenter whose github handle is not one. The avatar URL
 // is built from the handle without asking GitHub, so a handle that cannot be one
 // would otherwise reach the page as a URL that answers with a 404 image.
-func checkAvatar(show *Presentation) *Problem {
+func checkAvatar(at string, show *Presentation) *Problem {
 	if show.Presenter.Avatar != "" || show.Presenter.GitHub == "" {
 		return nil
 	}
@@ -317,7 +317,7 @@ func checkAvatar(show *Presentation) *Problem {
 	}
 
 	return &Problem{
-		Path:    presentationFile,
+		Path:    at,
 		Message: fmt.Sprintf("presenter github %q is not a github handle, so no avatar was placed", handle),
 	}
 }
@@ -334,7 +334,7 @@ type deckTransition struct {
 // theme's, what neither names is none, and a speed is the deck's alone. A value
 // outside reveal's sets counts as unnamed, so it is a problem against the file
 // that wrote it and the deck moves the way it would have without the line.
-func resolveTransition(show *Presentation, theme *Theme) (deckTransition, []Problem) {
+func resolveTransition(at string, show *Presentation, theme *Theme) (deckTransition, []Problem) {
 	move := deckTransition{name: defaultTransition, speed: defaultTransitionSpeed}
 
 	var problems []Problem
@@ -348,7 +348,7 @@ func resolveTransition(show *Presentation, theme *Theme) (deckTransition, []Prob
 		move.name = themed
 	}
 
-	named, problem := checkChoice(presentationFile, "transition", show.Transition, transitions)
+	named, problem := checkChoice(at, "transition", show.Transition, transitions)
 	if problem != nil {
 		problems = append(problems, *problem)
 	}
@@ -357,7 +357,7 @@ func resolveTransition(show *Presentation, theme *Theme) (deckTransition, []Prob
 		move.name = named
 	}
 
-	speed, problem := checkChoice(presentationFile, "transition_speed", show.TransitionSpeed, transitionSpeeds)
+	speed, problem := checkChoice(at, "transition_speed", show.TransitionSpeed, transitionSpeeds)
 	if problem != nil {
 		problems = append(problems, *problem)
 	}

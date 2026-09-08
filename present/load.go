@@ -22,7 +22,20 @@ var (
 
 const (
 	presentationFile = "presentation.yaml"
-	mdExt            = ".md"
+	// presentationMarkdownFile is the whole deck in one file: the presentation
+	// yaml as its frontmatter and every slide under it. A deck holding one is
+	// read that way and the markdown beside it is not searched for slides.
+	presentationMarkdownFile = "presentation.md"
+	// slideBreak opens a slide of a presentation.md and closes that slide's
+	// frontmatter, so a slide is a break, its yaml, a break, and its markdown
+	// until the next one. It is not the fence, because a fence on its own line
+	// already means two things inside a slide's body: a thematic break, and the
+	// division between the two halves of a splitting page style.
+	slideBreak = "+++"
+	// codeFences are the two runs a fenced code block opens with. A slide break
+	// inside one is the deck's own text.
+	codeFences = "`~"
+	mdExt      = ".md"
 	// defaultAspect is what a deck that names no aspect gets.
 	defaultAspect = "16:9"
 	fence         = "---"
@@ -47,7 +60,11 @@ var (
 // problems found reading them.
 type Deck struct {
 	// Dir is the deck directory as it was given to LoadDeck.
-	Dir          string       `json:"dir"`
+	Dir string `json:"dir"`
+	// Source is the file the presentation was read from: presentation.yaml for a
+	// deck of one file per slide, presentation.md for a deck in one file. It is
+	// what a problem against the presentation names.
+	Source       string       `json:"source,omitempty"`
 	Presentation Presentation `json:"presentation"`
 	// Slides are the slides that loaded, sorted by number. One that could not be
 	// read, and one with no page_style, is left out.
@@ -55,6 +72,17 @@ type Deck struct {
 	Problems []Problem `json:"problems,omitempty"`
 
 	root *os.Root
+}
+
+// presentationPath is the file a problem against the presentation names. A Deck
+// built without LoadDeck names presentation.yaml, which is the form that has
+// one.
+func (d *Deck) presentationPath() string {
+	if d.Source == "" {
+		return presentationFile
+	}
+
+	return d.Source
 }
 
 // Root is the open deck directory. Every asset a slide or a theme template
@@ -79,9 +107,14 @@ func (d *Deck) Close() error {
 // everything through that root, which reaches a deck that is itself a symlink
 // and confines every later asset read to the directory.
 //
+// A deck is written either way: presentation.md, which is the presentation yaml
+// as frontmatter and every slide under it, or presentation.yaml with one
+// markdown file per slide beside it. A directory holding presentation.md is read
+// that way, since that file is the whole deck.
+//
 // It returns an error only for what stops a deck existing: a directory it cannot
-// open, and a missing presentation.yaml. A slide that will not parse, a missing
-// page_style, two slides on one number and an unknown key in presentation.yaml
+// open, and neither presentation file. A slide that will not parse, a missing
+// page_style, two slides on one number and an unknown key in the presentation
 // are Problems on the returned deck, and what to do about one is the caller's:
 // render refuses to write a file, serve logs it and serves the rest, and the
 // board counts it.
@@ -93,6 +126,24 @@ func LoadDeck(dir string) (*Deck, error) {
 
 	rootFS := root.FS()
 
+	single, err := fs.ReadFile(rootFS, presentationMarkdownFile)
+	if err == nil {
+		deck := &Deck{Dir: dir, Source: presentationMarkdownFile, Slides: []*Slide{}, root: root}
+
+		deck.loadMarkdownDeck(rootFS, single)
+
+		return deck, nil
+	}
+
+	// A presentation.md that is there and will not open is the deck its author
+	// meant, so it is the failure rather than the reason to go looking for the
+	// other form.
+	if !errors.Is(err, fs.ErrNotExist) {
+		root.Close()
+
+		return nil, fmt.Errorf("%w: %w", ErrNoPresentation, err)
+	}
+
 	data, err := fs.ReadFile(rootFS, presentationFile)
 	if err != nil {
 		root.Close()
@@ -100,12 +151,216 @@ func LoadDeck(dir string) (*Deck, error) {
 		return nil, fmt.Errorf("%w: %w", ErrNoPresentation, err)
 	}
 
-	deck := &Deck{Dir: dir, Slides: []*Slide{}, root: root}
+	deck := &Deck{Dir: dir, Source: presentationFile, Slides: []*Slide{}, root: root}
 
 	deck.loadPresentation(data)
 	deck.loadSlides(rootFS)
 
 	return deck, nil
+}
+
+// loadMarkdownDeck reads a whole deck out of one presentation.md: the
+// presentation from its frontmatter, then a slide for each pair of blocks the
+// slide breaks divide the rest into.
+func (d *Deck) loadMarkdownDeck(rootFS fs.FS, data []byte) {
+	_, err := fs.Stat(rootFS, presentationFile)
+	if err == nil {
+		d.report(presentationMarkdownFile, fmt.Sprintf("%s is beside it and is not being read: a deck is written one way or the other", presentationFile))
+	}
+
+	front, body, err := splitFrontmatter(data)
+	if err != nil {
+		d.report(presentationMarkdownFile, fmt.Sprintf("%s, which is where the presentation goes", err))
+	}
+
+	d.loadPresentation([]byte(front))
+
+	// The body opens on the line after the frontmatter's closing fence, which is
+	// the frontmatter's own lines plus the two fences.
+	d.loadMarkdownSlides(body, lineCount(front)+3)
+}
+
+// loadMarkdownSlides reads the slides of a presentation.md. Order in the file is
+// the order of the talk, so each slide takes the number of its place and the two
+// slides on one number a directory of files can hold cannot arise.
+func (d *Deck) loadMarkdownSlides(body string, firstLine int) {
+	blocks := splitBreaks(body, firstLine)
+
+	// What stands between the presentation's frontmatter and the first break
+	// belongs to no slide. Blank is what it should be, and anything else was
+	// written by someone who left the break off the slide above.
+	if len(blocks) > 0 && strings.TrimSpace(blocks[0].text) != "" {
+		d.report(fmt.Sprintf("%s:%d", presentationMarkdownFile, blocks[0].line), fmt.Sprintf("text above the first %s belongs to no slide", slideBreak))
+	}
+
+	for i := 1; i < len(blocks); i += 2 {
+		// A slide whose second break closes the file has frontmatter and no body,
+		// which is what a title slide carrying only its page style looks like.
+		var body string
+		if i+1 < len(blocks) {
+			body = blocks[i+1].text
+		}
+
+		// The number is the slide's place in the deck rather than in the file, so
+		// a slide dropped for a problem leaves no gap behind it.
+		slide := d.loadMarkdownSlide(blocks[i], body, len(d.Slides)+1)
+		if slide == nil {
+			continue
+		}
+
+		d.Slides = append(d.Slides, slide)
+	}
+}
+
+// loadMarkdownSlide reads one slide of a presentation.md from the yaml between
+// its two breaks and the markdown under them.
+func (d *Deck) loadMarkdownSlide(front block, body string, number int) *Slide {
+	at := fmt.Sprintf("%s:%d", presentationMarkdownFile, front.line)
+
+	var parsed slideFront
+
+	err := yaml.Unmarshal([]byte(front.text), &parsed)
+	if err != nil {
+		d.report(at, fmt.Sprintf("cannot parse yaml frontmatter: %s", oneLine(err)))
+
+		return nil
+	}
+
+	if parsed.Theme != nil {
+		d.report(at, "theme is set per presentation, not per slide")
+	}
+
+	if parsed.Slide != nil {
+		d.report(at, "slide is set by the order in the file, not by a number")
+	}
+
+	if parsed.PageStyle == "" {
+		d.report(at, "missing page_style")
+
+		return nil
+	}
+
+	return &Slide{
+		Number:     number,
+		Path:       at,
+		PageStyle:  parsed.PageStyle,
+		Caption:    parsed.Caption,
+		CTA:        parsed.CTA,
+		Notes:      parsed.Notes,
+		Background: parsed.Background,
+		Transition: parsed.Transition,
+		TextSize:   parsed.TextSize,
+		Markdown:   strings.TrimSpace(body),
+	}
+}
+
+// block is one run of lines between two slide breaks, with the line its first
+// line of text is on so a problem points at the slide rather than at the file.
+type block struct {
+	line int
+	text string
+}
+
+// splitBreaks divides the body of a presentation.md at every slide break. The
+// blocks come back in the order they were written, so the first holds whatever
+// stands above the first break and the rest alternate between a slide's
+// frontmatter and its markdown.
+//
+// A break inside a fenced code block is the deck's own text: a slide showing a
+// presentation.md would otherwise end halfway through the example it is showing.
+func splitBreaks(body string, firstLine int) []block {
+	var (
+		blocks  []block
+		current []string
+		start   int
+		fence   string
+	)
+
+	// opened is the break the current block follows, which is the line a problem
+	// against that slide names: it is where a person looks for the slide. The
+	// first block follows no break, so it names its own first line of text.
+	opened := 0
+
+	begin := func(number int) int {
+		if opened != 0 {
+			return opened
+		}
+
+		return number
+	}
+
+	flush := func() {
+		if start == 0 {
+			start = begin(firstLine)
+		}
+
+		blocks = append(blocks, block{line: start, text: strings.Join(current, "\n")})
+
+		current = nil
+		start = 0
+	}
+
+	for i, line := range strings.Split(body, "\n") {
+		number := firstLine + i
+		trimmed := trimLine(line)
+
+		switch {
+		case fence != "":
+			if strings.HasPrefix(strings.TrimLeft(trimmed, " "), fence) {
+				fence = ""
+			}
+
+		case openingFence(trimmed) != "":
+			fence = openingFence(trimmed)
+
+		case trimmed == slideBreak:
+			flush()
+
+			opened = number
+
+			continue
+		}
+
+		if start == 0 {
+			// The blank lines around a break belong to neither side of it.
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+
+			start = begin(number)
+		}
+
+		current = append(current, line)
+	}
+
+	flush()
+
+	return blocks
+}
+
+// openingFence is the run of backticks or tildes a line opens a fenced code
+// block with, and empty for every other line.
+func openingFence(line string) string {
+	trimmed := strings.TrimLeft(line, " ")
+
+	for _, mark := range codeFences {
+		run := len(trimmed) - len(strings.TrimLeft(trimmed, string(mark)))
+		if run >= 3 {
+			return trimmed[:run]
+		}
+	}
+
+	return ""
+}
+
+// lineCount is how many lines a block of text holds, which is one more than its
+// newlines except for the empty block, which holds none.
+func lineCount(text string) int {
+	if text == "" {
+		return 0
+	}
+
+	return strings.Count(text, "\n") + 1
 }
 
 // loadPresentation decodes presentation.yaml. It decodes twice: once to fill the
@@ -115,7 +370,7 @@ func LoadDeck(dir string) (*Deck, error) {
 func (d *Deck) loadPresentation(data []byte) {
 	err := yaml.Unmarshal(data, &d.Presentation)
 	if err != nil {
-		d.report(presentationFile, fmt.Sprintf("cannot parse yaml: %s", oneLine(err)))
+		d.report(d.presentationPath(), fmt.Sprintf("cannot parse yaml: %s", oneLine(err)))
 
 		// A deck with problems is still served, so a yaml the decoder rejected
 		// carries on to the aspect below. Returning here left the width and height
@@ -127,11 +382,11 @@ func (d *Deck) loadPresentation(data []byte) {
 
 	err = yaml.UnmarshalWithOptions(data, &Presentation{}, yaml.Strict())
 	if err != nil {
-		d.report(presentationFile, oneLine(err))
+		d.report(d.presentationPath(), oneLine(err))
 	}
 
 	if d.Presentation.Theme == "" {
-		d.report(presentationFile, "missing theme")
+		d.report(d.presentationPath(), "missing theme")
 	}
 
 	d.applyAspect()
@@ -146,7 +401,7 @@ func (d *Deck) applyAspect() {
 
 	width, height, ok := aspectSize(d.Presentation.Aspect)
 	if !ok {
-		d.report(presentationFile, fmt.Sprintf("aspect %q is not a W:H ratio", d.Presentation.Aspect))
+		d.report(d.presentationPath(), fmt.Sprintf("aspect %q is not a W:H ratio", d.Presentation.Aspect))
 
 		d.Presentation.Aspect = defaultAspect
 		width, height, _ = aspectSize(defaultAspect)

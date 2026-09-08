@@ -3,13 +3,23 @@
 // touches the network: under the board a deck loads on every request, so a load
 // is disk reads and a yaml decode and no more.
 //
-// A deck directory holds:
+// A deck is written either way. One file per slide:
 //
 //	<deck>/
 //	  presentation.yaml
 //	  01-title.md
 //	  02-what-it-is.md
 //	  images/...
+//
+// or the whole deck in one, the presentation as its frontmatter and a +++ before
+// each slide:
+//
+//	<deck>/
+//	  presentation.md
+//	  images/...
+//
+// A directory holding presentation.md is read that way, and the markdown beside
+// it is not searched for slides.
 //
 // Slide bodies are kept as raw markdown. Lifting the heading out and splitting a
 // columns slide both need the theme, which the loader does not have.

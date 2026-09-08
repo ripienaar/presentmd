@@ -17,6 +17,39 @@ go install github.com/ripienaar/presentmd@latest
 
 ## Your first deck
 
+A deck is a directory, written either as one file or as a file per slide.
+
+### One file
+
+`mydeck/presentation.md`, the presentation as frontmatter and a `+++` before
+each slide:
+
+```markdown
+---
+title: A Talk About Things
+subtitle: And what they are for
+theme: default
+presenter:
+  name: Alex
+  surname: Rivera
+contact_email: alex@example.net
+---
+
++++
+page_style: title
++++
+
++++
+page_style: content
++++
+
+# What They Are For
+
+The body, as **markdown**.
+```
+
+### A file per slide
+
 Two files in a directory:
 
 ```
@@ -52,11 +85,15 @@ presentmd serve mydeck
 ```
 
 A browser opens on the deck. Edit a slide and the page follows the change as you
-save. A fuller deck, with every page style and every key in use, is in
-[example/presentation](example/presentation):
+save, whichever form the deck is written in.
+
+There is a fuller deck of each form in [example](example), both with every page
+style and every key in use: [example/presentation](example/presentation) is a
+file per slide, [example/themes](example/themes) is one file.
 
 ```
 presentmd serve example/presentation
+presentmd serve example/themes
 ```
 
 ## Commands
@@ -143,8 +180,20 @@ shows the derived line, though the contacts still reach the closing slide.
 
 ## Slides
 
-One slide per file, named with a leading number that sets the order:
-`01-title.md`, `02-what-it-is.md`. The frontmatter:
+A slide is yaml frontmatter and a markdown body. Where it lives depends on the
+form the deck is written in:
+
+- **One file.** `presentation.md` opens with the presentation's own frontmatter,
+  then a `+++` opens each slide and closes that slide's frontmatter. Order in the
+  file is the order of the talk.
+- **A file per slide.** One slide per `.md` file, named with a leading number
+  that sets the order: `01-title.md`, `02-what-it-is.md`. The frontmatter is
+  fenced with `---` as usual, and `slide:` overrides the number for a file whose
+  name should not carry one.
+
+A directory holding `presentation.md` is read that way and the markdown beside it
+is not searched for slides, so a deck is written one way or the other rather than
+both. The frontmatter is the same either way:
 
 | Key           | What it is                                                     |
 |---------------|----------------------------------------------------------------|
@@ -159,6 +208,11 @@ One slide per file, named with a leading number that sets the order:
 The body's first level one heading is the slide's heading and the rest is the
 content. The theme places the presenter, the contacts and the footer, so no
 slide writes them.
+
+`+++` is the slide break rather than `---` because a `---` inside a body already
+means two things: a thematic break, and the division between the halves of a
+[two column](#two-columns) slide. A `+++` inside a fenced code block is the
+deck's own text and does not end the slide.
 
 `text_size` moves that slide's body and its code together, while the heading,
 the caption and the footer stay where the theme puts them on every slide. Reach

@@ -108,7 +108,7 @@ func export(deck *Deck, theme *Theme, opts exportOptions) ([]byte, []Problem, er
 	// issue, and the page is rendered again with whatever came back rather than
 	// with the URL.
 	if presenter.Avatar == "" && presenter.GitHub != "" {
-		avatar, problem := fetchAvatar(presenter.GitHub, opts)
+		avatar, problem := fetchAvatar(deck.presentationPath(), presenter.GitHub, opts)
 		if problem != nil {
 			problems = append(problems, *problem)
 		}
@@ -133,7 +133,7 @@ func export(deck *Deck, theme *Theme, opts exportOptions) ([]byte, []Problem, er
 // not answer, or answers with anything but the image, is a problem and an empty
 // avatar: the slot is left empty rather than pointing a file that is meant to
 // open offline at github.com.
-func fetchAvatar(handle string, opts exportOptions) (string, *Problem) {
+func fetchAvatar(at string, handle string, opts exportOptions) (string, *Problem) {
 	client := opts.client
 	if client == nil {
 		client = &http.Client{Timeout: avatarTimeout}
@@ -148,31 +148,31 @@ func fetchAvatar(handle string, opts exportOptions) (string, *Problem) {
 
 	resp, err := client.Get(url)
 	if err != nil {
-		return "", avatarProblem(url, err.Error())
+		return "", avatarProblem(at, url, err.Error())
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", avatarProblem(url, "answered "+resp.Status)
+		return "", avatarProblem(at, url, "answered "+resp.Status)
 	}
 
 	// One byte past the limit is read so a response that runs on is refused
 	// rather than carried into the page as an image cut in half.
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxAvatarBytes+1))
 	if err != nil {
-		return "", avatarProblem(url, err.Error())
+		return "", avatarProblem(at, url, err.Error())
 	}
 
 	if len(data) > maxAvatarBytes {
-		return "", avatarProblem(url, fmt.Sprintf("answered with more than %d bytes", maxAvatarBytes))
+		return "", avatarProblem(at, url, fmt.Sprintf("answered with more than %d bytes", maxAvatarBytes))
 	}
 
 	return dataURIOf(avatarContentType(resp), data), nil
 }
 
-func avatarProblem(url string, message string) *Problem {
+func avatarProblem(at string, url string, message string) *Problem {
 	return &Problem{
-		Path:    presentationFile,
+		Path:    at,
 		Message: fmt.Sprintf("cannot fetch the avatar at %s, so the slot is empty: %s", url, message),
 	}
 }
