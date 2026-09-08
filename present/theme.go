@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/CloudyKit/jet/v6"
 	"github.com/goccy/go-yaml"
@@ -29,6 +30,7 @@ var (
 	ErrThemeTemplate = errors.New("cannot parse theme template")
 	ErrNoPageStyle   = errors.New("theme has no such page style")
 	ErrRenderStyle   = errors.New("cannot render page style")
+	ErrRegisterTheme = errors.New("cannot register theme")
 )
 
 const (
@@ -57,6 +59,15 @@ var includeRe = regexp.MustCompile(`{{-?\s*include\s+"([^"]+)"`)
 //
 //go:embed all:themes
 var themeFiles embed.FS
+
+// registeredThemes are the themes a program importing present embedded itself
+// and handed over with RegisterTheme, keyed by the name a deck writes. LoadTheme
+// answers from http handlers and from the watcher, so the map is read on several
+// goroutines and the lock is held for every read of it.
+var (
+	registeredMu     sync.RWMutex
+	registeredThemes = map[string]fs.FS{}
+)
 
 // ThemeFonts are the three roles a theme's stylesheet asks for, each a CSS font
 // stack rather than a single family. The page sets them as custom properties the
@@ -107,11 +118,11 @@ type Theme struct {
 }
 
 // LoadTheme loads the theme presentation.yaml named. A name holding a path
-// separator is a directory, resolved against deckDir when it is relative, and
-// any other value is looked up in the embedded set. There is no search path and
-// no inheritance: a theme is either in the binary or in one directory a person
-// points at, and copying an embedded theme out of the source tree is how one
-// starts.
+// separator is a directory, resolved against deckDir when it is relative. Any
+// other value is looked up among the themes RegisterTheme was given and then in
+// the embedded set. There is no search path and no inheritance: a theme is in
+// the binary or in one directory a person points at, and copying an embedded
+// theme out of the source tree is how one starts.
 //
 // A directory theme may sit anywhere the process can read, including outside the
 // deck and outside the planning root, and LoadTheme does not confine it. That is
@@ -123,10 +134,13 @@ func LoadTheme(name string, deckDir string) (*Theme, error) {
 		return loadDirectoryTheme(name, deckDir)
 	}
 
-	embedded := embeddedThemes()
+	fsys, registered := registeredTheme(name)
+	if registered {
+		return newTheme(name, "", fsys)
+	}
 
-	if !slices.Contains(embedded, name) {
-		return nil, fmt.Errorf("%w: %q, embedded themes are %s", ErrUnknownTheme, name, strings.Join(embedded, ", "))
+	if !slices.Contains(embeddedThemes(), name) {
+		return nil, fmt.Errorf("%w: %q, the themes are %s", ErrUnknownTheme, name, strings.Join(knownThemes(), ", "))
 	}
 
 	sub, err := fs.Sub(themeFiles, path.Join(embeddedDir, name))
@@ -135,6 +149,83 @@ func LoadTheme(name string, deckDir string) (*Theme, error) {
 	}
 
 	return newTheme(name, "", sub)
+}
+
+// RegisterTheme adds a theme to the set LoadTheme resolves by name, for a program
+// that imports present and carries themes of its own. The name is what a deck
+// writes as its theme, and fsys is the theme itself: its root holds theme.yaml,
+// theme.css and styles/, which is the shape of a theme directory.
+//
+// A registered theme is resolved the way an embedded one is. It names no
+// directory, so the watcher does not watch it and a reload finds it again by
+// name, and it holds a theme against changes to the one that ships here, since
+// the program that registered it carries every file of it.
+//
+// The theme is built here and discarded, so one broken by an edit fails where the
+// program registers it rather than the first time somebody opens a deck naming
+// it. A name holding a path separator is refused, since LoadTheme reads that as a
+// directory, and so is one an embedded or already registered theme answers to.
+//
+// Register before serving. LoadTheme takes the read side of the same lock, so a
+// later call is safe rather than a race, but a deck loaded before it gets
+// ErrUnknownTheme.
+func RegisterTheme(name string, fsys fs.FS) error {
+	if name == "" {
+		return fmt.Errorf("%w: the name is empty", ErrRegisterTheme)
+	}
+
+	if IsDirectoryTheme(name) {
+		return fmt.Errorf("%w: %q holds a path separator, which names a directory theme", ErrRegisterTheme, name)
+	}
+
+	if slices.Contains(embeddedThemes(), name) {
+		return fmt.Errorf("%w: %q is a theme in the binary", ErrRegisterTheme, name)
+	}
+
+	_, err := newTheme(name, "", fsys)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrRegisterTheme, err)
+	}
+
+	registeredMu.Lock()
+	defer registeredMu.Unlock()
+
+	_, taken := registeredThemes[name]
+	if taken {
+		return fmt.Errorf("%w: %q is registered", ErrRegisterTheme, name)
+	}
+
+	registeredThemes[name] = fsys
+
+	return nil
+}
+
+// registeredTheme is the theme registered under name, if one is.
+func registeredTheme(name string) (fs.FS, bool) {
+	registeredMu.RLock()
+	defer registeredMu.RUnlock()
+
+	fsys, ok := registeredThemes[name]
+
+	return fsys, ok
+}
+
+// knownThemes are every name LoadTheme answers to, registered and embedded
+// together and sorted, which is what the error for a name it does not know
+// lists.
+func knownThemes() []string {
+	names := embeddedThemes()
+
+	registeredMu.RLock()
+	defer registeredMu.RUnlock()
+
+	for name := range registeredThemes {
+		names = append(names, name)
+	}
+
+	slices.Sort(names)
+
+	return names
 }
 
 // IsDirectoryTheme reports whether name is a path to a theme directory rather
