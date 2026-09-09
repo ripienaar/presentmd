@@ -48,6 +48,10 @@ The top bar counts what is wrong with the deck and lists it: the same problems
 chrome into dark, which the deck below never follows: a slide is whatever its
 theme makes it, on the projector and here.
 
+`Help` slides out a panel of what a slide can write that markdown does not
+already say: the page styles, the frontmatter keys, the tints, and the keys the
+editor answers to.
+
 Moving between slides moves both halves. The arrows over the deck walk it and
 scroll the editor to that slide's panel, and clicking through the deck itself
 moves the editor onto the slide you are looking at. Like the deck it renders, the editor fetches
@@ -340,6 +344,23 @@ code and fenced code. Fenced code is highlighted with the style the theme names.
 Images point at files in the deck directory, `images/thing.svg`, and are served
 from there or inlined into an export.
 
+A run of words takes a colour from the theme:
+
+```markdown
+The {{accent}}fast{{/}} path, {{good}}shipped{{/}}, {{bad}}dropped{{/}} and a
+{{muted}}footnote nobody reads{{/}}.
+```
+
+The four are `accent`, `muted`, `good` and `bad`, closed by a bare `{{/}}`.
+They are roles rather than colours so a deck keeps its meaning when the theme
+changes, and what each one looks like is the theme's to say. Markdown inside a
+tint still works, `{{good}}with **bold**{{/}}`.
+
+A name that is not one of the four, and a role opened and never closed, are left
+on the slide as the text they were written as and reported as a problem against
+the file. Text that means the braces escapes the first one, `\{{name}}`, and a
+code span or a fenced block is never read for tints.
+
 ## Themes
 
 One theme ships in the binary, named `default`: a light ground, teal accent and
@@ -365,6 +386,13 @@ To write one, start from `present/themes/default/` in this repository and change
 what you want. A template is handed `heading`, `body`, `left`, `right`,
 `caption`, `cta`, `avatar`, `presenter`, `footer`, `contacts`, `presentation`
 and `slide`.
+
+The page carries a small stylesheet of its own before the theme's, so a theme
+that says nothing about them still gets task list checkboxes drawn in the slide's
+sizes and tints coloured from `--accent` and `--ink-3`. A theme picks its own by
+setting `--tint-accent`, `--tint-muted`, `--tint-good`, `--tint-bad`,
+`--check-box` and `--check-mark`, or overrides the rules outright: its stylesheet
+is loaded after.
 
 ## Claude Code skills
 

@@ -264,14 +264,25 @@ func TestDefaultThemeShipsItsFonts(t *testing.T) {
 		t.Fatalf("cannot read the stylesheet: %v", err)
 	}
 
-	named := cssURLRe.FindAllStringSubmatch(string(css), -1)
+	// A url() the deck directory cannot answer for is not a file the theme has to
+	// ship: the checkbox tick is a data URI, which carries its own content and is
+	// dropped by the exporter for the same reason.
+	var named []string
+
+	for _, match := range cssURLRe.FindAllStringSubmatch(string(css), -1) {
+		ref, ok := relativeAsset(refValue(match))
+		if !ok {
+			continue
+		}
+
+		named = append(named, ref)
+	}
+
 	if len(named) == 0 {
 		t.Fatal("the stylesheet names no font file")
 	}
 
-	for _, match := range named {
-		ref := refValue(match)
-
+	for _, ref := range named {
 		_, err := fs.Stat(theme.FS(), ref)
 		if err != nil {
 			t.Errorf("the stylesheet names %q, which the theme does not ship: %v", ref, err)

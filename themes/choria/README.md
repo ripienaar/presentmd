@@ -19,6 +19,8 @@ There is an example site at [https://presentmd-theme-choria.shipstatic.com](http
 | type | white, with the body at 90% and captions and the footer at 58% |
 | headings, prose | Dosis, shipped as latin woff2 at 400, 500, 600 and 700 |
 | code | the machine's mono, highlighted with chroma's `nord` |
+| tints | `good` the mark's light green, `bad` `#ff9a8a`, both picked to read on the dark ground |
+| checkboxes | the mark's green, the empty box at the weight the bullets are drawn at |
 
 All seven page styles are implemented, and `columns` splits on `---`.
 
@@ -40,6 +42,24 @@ rather than of the slide.
 
 A slide that names a `background` of its own carries enough picture already, so
 the mark is left off there.
+
+## Colouring a word
+
+A slide colours a run of words by role, `The {{accent}}fast{{/}} path`, and the same for
+`{{muted}}`, `{{good}}` and `{{bad}}`. The page carries the rules; this theme sets what each
+role is:
+
+```css
+--tint-accent: var(--accent);
+--tint-muted: var(--ink-3);
+--tint-good: #8ed4a6;
+--tint-bad: #ff9a8a;
+--check-box: var(--accent-3);
+--check-mark: var(--accent);
+```
+
+`good` and `bad` are the light ends of their hues because the ground is dark; the ink ends of
+green and red disappear into it.
 
 ## Backgrounds a slide sets itself
 

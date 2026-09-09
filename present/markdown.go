@@ -34,6 +34,25 @@ type slideMarkdown struct {
 	// rather than threading it through every call; a slideMarkdown is not for
 	// concurrent use.
 	slidePrefix string
+	// tints are what the slide being rendered got wrong about a tint: a role
+	// nobody defined, or one opened and never closed. The markdown of a slide is
+	// rendered through four calls, the body, the caption, the call to action and
+	// the notes, so the parser writes here and the renderer reads it once the
+	// slide is done rather than each call carrying its own list back.
+	tints []string
+}
+
+// resetTints empties the problems the tints of the last slide raised. The
+// renderer calls it where it sets slidePrefix, so what tintProblems answers with
+// is one slide's worth.
+func (m *slideMarkdown) resetTints() {
+	m.tints = nil
+}
+
+// tintProblems is what the slide's tints got wrong, in the order they were
+// written.
+func (m *slideMarkdown) tintProblems() []string {
+	return m.tints
 }
 
 // prefixedIDs generates the ids goldmark writes for headings, putting the
@@ -129,12 +148,25 @@ func newSlideMarkdown(codeStyle string) *slideMarkdown {
 		}),
 	)
 
+	// The markdown between a tint's tags is parsed by a goldmark of its own, which
+	// carries the inline extensions a run of words can use and not the tint, so a
+	// tint cannot open inside a tint. The block extensions are left out: what sits
+	// between the tags is part of a line rather than a document of its own.
+	tints := &tintExtension{
+		inner: goldmark.New(
+			goldmark.WithExtensions(extension.Strikethrough, extension.Linkify),
+			goldmark.WithRendererOptions(gmhtml.WithUnsafe()),
+		),
+		report: func(problem string) { m.tints = append(m.tints, problem) },
+	}
+
 	m.md = goldmark.New(
 		goldmark.WithExtensions(
 			extension.Table,
 			extension.Strikethrough,
 			extension.Linkify,
 			extension.TaskList,
+			tints,
 			footnotes,
 			highlighting.NewHighlighting(
 				highlighting.WithStyle(codeStyle),

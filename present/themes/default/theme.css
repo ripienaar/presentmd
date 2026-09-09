@@ -64,6 +64,13 @@
   --accent: #2c6570;
   --accent-3: #bcd7dc;
 
+  /* The colours a tint reads. accent and muted would fall back to --accent and
+     --ink-3, but --ink-3 is close enough to the body here that a muted word
+     reads as ordinary text, so this board spells its own. */
+  --tint-muted: #9a9e93;
+  --tint-good: #2e7d4f;
+  --tint-bad: #b23c2f;
+
   /* The slide is laid out in its own pixel space, 1280 by 720 for 16:9, which
      reveal scales to the window. Reveal core sets no base size, since that
      normally comes from one of its own themes and none is vendored, so the

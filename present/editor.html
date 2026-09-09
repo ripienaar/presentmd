@@ -651,9 +651,86 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   letter-spacing: 0;
   text-transform: none;
   color: var(--ink-3);
+  overflow: hidden;
 }
-.deckbox .deckpath { color: var(--ink); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.deckbox .sep { padding: 0 2px; color: var(--rule-2); }
+/* A root is as long as the machine makes it, and the front of one says the least
+   about it, so it is cut from the front and the directory it ends in stays. The
+   whole of it is on the button's own tooltip.
+   The cut is at the front because the box reads right to left, and the path sits
+   in a bdi so that reading order does not carry the leading slash of /tmp/talks
+   around to the end of it. */
+.deckbox .rootpath {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+}
+.deckbox .rootpath bdi { direction: ltr; }
+.deckbox .deckpath { flex: 0 0 auto; color: var(--ink); max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deckbox .sep { flex: 0 0 auto; padding: 0 2px; color: var(--rule-2); }
+
+/* The help panel slides in over the deck rather than opening in the bar's own
+   pop, which is 520px of a menu and the wrong shape for a page somebody reads. */
+.help {
+  position: fixed;
+  top: 46px;
+  right: 0;
+  bottom: 0;
+  z-index: 25;
+  width: min(460px, 100vw);
+  overflow-y: auto;
+  padding: 16px 18px 26px;
+  background: var(--surface);
+  border-left: 1px solid var(--rule-2);
+  box-shadow: -14px 0 34px rgba(0,0,0,.13);
+  transform: translateX(100%);
+  transition: transform 0.18s ease;
+}
+.help.open { transform: translateX(0); }
+.help h2 {
+  font-family: var(--f-head);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 18px 0 7px;
+}
+.help h2:first-child { margin-top: 0; }
+.help p { font-size: 12.5px; line-height: 1.5; color: var(--ink-2); margin: 0 0 7px; }
+.help code {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: 0 3px;
+  color: var(--ink);
+}
+.help pre {
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: var(--bg);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 8px 9px;
+  margin: 0 0 9px;
+  overflow-x: auto;
+  color: var(--ink-2);
+}
+.help dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+  font-size: 12.5px;
+}
+.help dt { font-family: var(--f-mono); font-size: 11.5px; color: var(--accent); white-space: nowrap; }
+.help dd { margin: 0; color: var(--ink-2); line-height: 1.45; }
+.help .close { position: absolute; top: 12px; right: 14px; }
 
 .barpop {
   position: absolute;
@@ -732,11 +809,12 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
 <div class="bar">
   <div class="mark">presentmd<span class="dot">.</span></div>
   <button class="deckbox" id="deckbox" title="The deck being edited, under the root">
-    <span class="rootpath" id="rootpath"></span><span class="sep">/</span><span class="deckpath" id="deckpath"></span>
+    <span class="rootpath"><bdi id="rootpath"></bdi></span><span class="sep">/</span><span class="deckpath" id="deckpath"></span>
   </button>
   <button id="open">Open</button>
   <button id="new">New deck</button>
   <button id="copy" title="Copy presentation.md to the clipboard">Copy md</button>
+  <button id="help" title="What a slide can write" aria-expanded="false">Help</button>
   <button id="mode" class="icon" title="Light or dark editor" aria-label="Light or dark editor" aria-pressed="false">☾</button>
   <button id="save" class="primary">Save</button>
   <span class="spacer"></span>
@@ -745,6 +823,8 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
 </div>
 
 <div class="barpop" id="barpop" hidden></div>
+
+<aside class="help" id="helppanel" hidden aria-label="What a slide can write"></aside>
 
 <div class="split">
   <div class="editor" id="editor">
@@ -897,6 +977,8 @@ function adopt(loaded) {
 
   el('rootpath').textContent = deck.root;
   el('deckpath').textContent = deck.path === '.' ? '' : deck.path;
+  // The box cuts a long root, so the whole of it is on the tooltip.
+  el('deckbox').title = deck.path === '.' ? deck.root : deck.root + '/' + deck.path;
   el('save').textContent = 'Save';
 
   paintEditor();
@@ -1335,6 +1417,93 @@ function showNew(anchor) {
     anchor.offsetLeft);
 }
 
+/* ---------- the help panel ---------- */
+
+/* One line per page style and per frontmatter key, which is what the panel is
+   for: the parts of a deck that are this editor's rather than markdown's. */
+const STYLE_HELP = {
+  title: 'the opening slide, built from the Presentation section above',
+  section: 'a divider carrying a heading alone',
+  content: 'a heading and a body, the ordinary slide',
+  columns: 'a body divided at a --- into two columns',
+  code: 'a slide built around a fenced code block',
+  image: 'a slide built around one picture',
+  closing: 'the questions slide, which lists the contacts'
+};
+
+const PROP_HELP = {
+  page_style: 'which layout, the one key a slide must have',
+  text_size: 'small, normal, large or huge',
+  transition: "this slide's own move, over the deck's",
+  background: 'a hex value, a CSS colour name, or an image in the deck directory',
+  caption: 'a line under the body',
+  cta: 'a call to action under the caption'
+};
+
+function helpHTML() {
+  const styles = PAGE_STYLES.map(style =>
+    '<dt>' + esc(style) + '</dt><dd>' + esc(STYLE_HELP[style] || '') + '</dd>').join('');
+
+  const props = PROPS.map(p =>
+    '<dt>' + esc(p.k) + '</dt><dd>' + esc(PROP_HELP[p.k] || '') + '</dd>').join('') +
+    '<dt>notes</dt><dd>the speaker view, never the audience</dd>';
+
+  const tints = (session.tints || []).map(role =>
+    '<code>{{' + esc(role) + '}}</code>').join(' ');
+
+  return '<button class="icon close" id="helpclose" aria-label="Close">✕</button>' +
+    '<h2>The file</h2>' +
+    '<p>One <code>presentation.md</code>: the deck\'s own frontmatter at the top, then a ' +
+    '<code>+++</code> opening each slide and closing that slide\'s frontmatter.</p>' +
+    '<h2>Page styles</h2>' +
+    '<dl>' + styles + '</dl>' +
+    '<h2>Slide keys</h2>' +
+    '<dl>' + props + '</dl>' +
+    '<h2>Colouring words</h2>' +
+    '<p>' + tints + ' colour a run of words, closed by <code>{{/}}</code>. They are roles ' +
+    'rather than colours, so the theme decides what each one looks like.</p>' +
+    '<pre>The {{accent}}fast{{/}} path, {{good}}shipped{{/}},\n{{bad}}dropped{{/}} and {{muted}}an aside{{/}}.</pre>' +
+    '<p>Markdown inside one still works, <code>{{good}}with **bold**{{/}}</code>. A name that is ' +
+    'not one of these, and one opened and never closed, stay on the slide as written and are ' +
+    'listed under Problems. Write <code>\\{{</code> for braces you mean, and code is never read ' +
+    'for them.</p>' +
+    '<h2>In the body</h2>' +
+    '<dl>' +
+      '<dt>---</dt><dd>divides the two columns of a <code>columns</code> slide</dd>' +
+      '<dt>- [ ]</dt><dd>a task list, drawn as checkboxes</dd>' +
+      '<dt># heading</dt><dd>the first one is the slide\'s heading, the theme places it</dd>' +
+      '<dt>images/x.svg</dt><dd>a path in the deck directory, inlined into an export</dd>' +
+    '</dl>' +
+    '<h2>Keys</h2>' +
+    '<dl>' +
+      '<dt>ctrl-s cmd-s</dt><dd>writes presentation.md</dd>' +
+      '<dt>esc</dt><dd>closes what is open here</dd>' +
+      '<dt>s f</dt><dd>speaker view and full screen, in the deck below</dd>' +
+    '</dl>';
+}
+
+function showHelp(open) {
+  const panel = el('helppanel');
+
+  if (open) {
+    panel.innerHTML = helpHTML();
+    panel.hidden = false;
+    // The transform animates only once the panel is in the document, so the class
+    // lands on the frame after this one.
+    requestAnimationFrame(() => panel.classList.add('open'));
+  } else {
+    panel.classList.remove('open');
+    panel.hidden = true;
+  }
+
+  el('help').classList.toggle('on', open);
+  el('help').setAttribute('aria-expanded', open);
+}
+
+function helpOpen() {
+  return !el('helppanel').hidden;
+}
+
 function showProblems(anchor) {
   const rows = deck.problems.map(p =>
     '<div class="problem"><span class="where">' + esc(p.path) + '</span><span>' + esc(p.message) + '</span></div>').join('');
@@ -1504,12 +1673,14 @@ el('editor').addEventListener('change', e => {
 document.addEventListener('click', e => {
   if (!e.target.closest('.pop, [data-prop], [data-prop-add]')) closePop();
   if (!e.target.closest('#barpop, #open, #new, #problems, #deckbox')) hideBarPop();
+  if (helpOpen() && !e.target.closest('#helppanel, #help')) showHelp(false);
 });
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     closePop();
     hideBarPop();
+    showHelp(false);
   }
 
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
@@ -1546,6 +1717,10 @@ el('deckbox').addEventListener('click', e => showDecks(e.currentTarget));
 el('new').addEventListener('click', e => showNew(e.currentTarget));
 el('problems').addEventListener('click', e => showProblems(e.currentTarget));
 el('save').addEventListener('click', () => save(false));
+el('help').addEventListener('click', () => showHelp(!helpOpen()));
+el('helppanel').addEventListener('click', e => {
+  if (e.target.closest('#helpclose')) showHelp(false);
+});
 
 el('copy').addEventListener('click', async () => {
   try {

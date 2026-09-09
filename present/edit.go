@@ -304,7 +304,14 @@ type deckEntry struct {
 // token is written into the page rather than answered from an endpoint, so a
 // page on another origin has nowhere to read it from.
 func (e *Editor) buildPage() ([]byte, error) {
-	session, err := json.Marshal(map[string]string{"token": e.token, "root": e.root.Name(), "deck": e.open})
+	// The tint roles are written in rather than spelled again in the page, so the
+	// help the editor shows is the set the renderer actually takes.
+	session, err := json.Marshal(map[string]any{
+		"token": e.token,
+		"root":  e.root.Name(),
+		"deck":  e.open,
+		"tints": tintRoles,
+	})
 	if err != nil {
 		return nil, err
 	}

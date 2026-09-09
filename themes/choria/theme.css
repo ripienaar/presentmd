@@ -58,6 +58,19 @@
   --accent-2: #8ed4a6;
   --accent-3: rgba(102, 193, 135, 0.45);
 
+  /* The colours a tint reads. The ground is dark, so good and bad are the light
+     ends of their hues rather than the ink ends, and accent and muted are the
+     type this theme already reads by. */
+  --tint-accent: var(--accent);
+  --tint-muted: var(--ink-3);
+  --tint-good: #8ed4a6;
+  --tint-bad: #ff9a8a;
+
+  /* A task list's checkbox: the mark's own green, in the weights the bullets and
+     the rules are drawn at. */
+  --check-box: var(--accent-3);
+  --check-mark: var(--accent);
+
   /* The slide is laid out in its own pixel space, 1280 by 720 for 16:9, which
      reveal scales to the window. Reveal core sets no base size, so it is set
      here and every em below is a multiple of it. */

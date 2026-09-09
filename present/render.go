@@ -182,10 +182,14 @@ func RenderDeck(deck *Deck, theme *Theme, opts RenderOptions) (*RenderedDeck, er
 			out.Problems = append(out.Problems, *problem)
 		}
 
+		// A slide reports what is wrong with it and still renders where it can: a
+		// page style the theme does not have leaves nothing to place and the slide
+		// is dropped, where a tint nobody defined is one word the wrong colour.
 		section, problems := renderSlide(md, theme, data, slide, transition, textSize, opts.EventsURL != "")
-		if len(problems) > 0 {
-			out.Problems = append(out.Problems, problems...)
 
+		out.Problems = append(out.Problems, problems...)
+
+		if section == "" {
 			continue
 		}
 
@@ -440,6 +444,7 @@ func renderSlide(md *slideMarkdown, theme *Theme, data TemplateData, slide *Slid
 	// Every slide's ids land in the one page reveal serves, so each slide's carry
 	// its number in front of them.
 	md.slidePrefix = fmt.Sprintf("s%d-", slide.Number)
+	md.resetTints()
 
 	body, err := md.render(slide.Markdown, theme.Splits(slide.PageStyle))
 	if errors.Is(err, ErrSecondBreak) {
@@ -510,7 +515,16 @@ func renderSlide(md *slideMarkdown, theme *Theme, data TemplateData, slide *Slid
 	section.WriteString(inner.String())
 	section.WriteString("</section>\n")
 
-	return section.String(), nil
+	// The slide still renders: a tint nobody defined is a word that came out the
+	// colour of the prose around it, which is worth a line against the file rather
+	// than a slide the deck loses.
+	var problems []Problem
+
+	for _, tint := range md.tintProblems() {
+		problems = append(problems, Problem{Path: slide.Path, Message: tint})
+	}
+
+	return section.String(), problems
 }
 
 // transitionAttribute is a slide's own transition as reveal reads it, and is
@@ -623,6 +637,75 @@ type pageData struct {
 	Shell string
 }
 
+// baseCSS is the stylesheet a theme does not have to write: the mechanics of a
+// checkbox and of a coloured run of words, sized from the slide and coloured
+// from the variables a theme already sets. The page loads it before the theme's
+// own stylesheet, so a theme that wants something else spells it there and wins.
+//
+// It is here rather than in each theme because a theme is written by hand, and a
+// person writing one should not have to know that an input carries a font size
+// of its own or that a mask is how a tick is drawn in the theme's own colour.
+//
+// A brace pair is an action to the template this is written into, so nothing
+// here writes the tags a slide uses for a tint.
+const baseCSS = `
+/* A tint: the span a role colours, written by the tint parser. A theme sets the
+   variables rather than spelling these rules again. */
+.reveal .tint-accent { color: var(--tint-accent, var(--accent, currentColor)); }
+.reveal .tint-muted { color: var(--tint-muted, var(--ink-3, currentColor)); }
+.reveal .tint-good { color: var(--tint-good, #2e7d4f); }
+.reveal .tint-bad { color: var(--tint-bad, #b23c2f); }
+
+/* Bold, a link and inline code inside a tint take its colour. A theme colours
+   each of those itself, and a theme's rule beats an inherited colour, so without
+   this a coloured run has a word of body text in the middle of it. */
+.reveal .tint-accent *,
+.reveal .tint-muted *,
+.reveal .tint-good *,
+.reveal .tint-bad * {
+  color: inherit;
+}
+
+/* A task list. Goldmark writes a bare checkbox into the item, which a browser
+   draws in the sizes of a form and beside the bullet the theme already paints,
+   so the marker comes off and the box is drawn in the sizes of the slide.
+
+   Both shapes of item are named because a list with a blank line in it is a
+   loose list, and markdown wraps the contents of a loose item in a paragraph. */
+.reveal li:has(> input[type="checkbox"]),
+.reveal li:has(> p > input[type="checkbox"]) {
+  list-style: none;
+}
+
+.reveal li > input[type="checkbox"],
+.reveal li > p > input[type="checkbox"] {
+  appearance: none;
+  /* The em has to come from the slide's text: an input carries a font size of
+     its own, and a box in those ems is the size of a checkbox in a form. The
+     negative margin hangs it where the bullet would have been, so a task list
+     and a plain list start their text on the same column. */
+  font: inherit;
+  width: 0.58em;
+  height: 0.58em;
+  margin: 0 0.34em 0 -0.92em;
+  border: 2px solid var(--check-box, var(--accent-3, currentColor));
+  border-radius: 3px;
+  background: transparent;
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+/* A checked item is the tick alone, drawn by masking the box down to it, which
+   is what lets the colour be the theme's rather than one baked into a picture. */
+.reveal li > input[type="checkbox"]:checked,
+.reveal li > p > input[type="checkbox"]:checked {
+  border-color: transparent;
+  background: var(--check-mark, var(--accent, currentColor));
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.5 3.5 6.5-7'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23000' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' d='M3 8.5l3.5 3.5 6.5-7'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+`
+
 // pageTemplate is the whole page. Reveal is initialized with hash: true so a
 // reload returns to the slide that was showing, and with the deck's aspect in
 // pixels, which every deck passes because reveal's own default is 960 by 700
@@ -649,7 +732,7 @@ const pageTemplate = `<!doctype html>
   --{{ .Name }}: {{ .Stack }};
 {{- end }}
 }
-</style>
+` + baseCSS + `</style>
 <link rel="stylesheet" href="{{ .ThemeCSS }}">
 <style>
 {{ .Chroma }}</style>
