@@ -48,8 +48,8 @@ one leaves white on light.
 
 ## Contacts
 
-The closing slide reads the contacts from the deck's `presentation.yaml`, not
-from the theme:
+The closing slide reads the contacts from the deck's own frontmatter, not from
+the theme:
 
 ```yaml
 presenter:
@@ -57,6 +57,7 @@ presenter:
   surname: Pienaar
 contact_email: rip@devco.net
 contact_web: https://devco.net
+contact_web_label: blog
 contact_social: "@ripienaar@mastodon.social"
 contact_social_network: Mastodon
 ```

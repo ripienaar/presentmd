@@ -421,5 +421,7 @@ disk.
 
 ## License
 
+presentmd is under the Apache License 2.0, see `LICENSE`.
+
 reveal.js is bundled under its own MIT license, see `present/reveal/LICENSE`.
 The IBM Plex font files the theme carries are under the SIL Open Font License.
