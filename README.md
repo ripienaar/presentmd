@@ -15,9 +15,8 @@ binary or inlined into the export.
 
 ## Install
 
-```
-go install github.com/ripienaar/presentmd@latest
-```
+Download the package for your machine from
+[the releases page](https://github.com/ripienaar/presentmd/releases).
 
 ## The editor
 
