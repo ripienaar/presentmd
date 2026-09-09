@@ -180,7 +180,11 @@ body {
 }
 .dirbox input:focus { outline: none; }
 
-.bar .spacer { flex: 0 0 4px; }
+/* The gap that takes up every change of width: the buttons stand to the left of
+   it and the status and the problem count to the right, so a status that grows
+   from Loading to Wrote presentation.md eats the gap rather than moving the
+   buttons out from under the pointer. */
+.bar .spacer { flex: 1 1 4px; }
 
 button {
   font-family: var(--f-head);
@@ -561,9 +565,14 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   background: var(--stage);
 }
 
+/* Three columns with the outer two the same width, so the arrows sit in the
+   middle of the bar rather than between the chips and the keys: the fit chip
+   changes its text as the slide changes, and a centre that moved with it moved
+   out from under the pointer. */
 .deckbar {
   flex: 0 0 auto;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 12px;
   padding: 0 14px;
@@ -571,6 +580,7 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   background: var(--surface);
   border-bottom: 1px solid var(--rule);
 }
+.deckbar .left { display: flex; align-items: center; gap: 12px; min-width: 0; overflow: hidden; }
 .deckbar .lbl {
   font-family: var(--f-head);
   font-size: 10.5px;
@@ -579,7 +589,7 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   letter-spacing: 0.09em;
   color: var(--ink-3);
 }
-.deckbar .nav { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.deckbar .nav { display: flex; align-items: center; gap: 6px; }
 .deckbar .count {
   font-family: var(--f-mono);
   font-variant-numeric: tabular-nums;
@@ -588,7 +598,7 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   min-width: 52px;
   text-align: center;
 }
-.deckbar .right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+.deckbar .right { display: flex; align-items: center; gap: 6px; min-width: 0; justify-content: flex-end; overflow: hidden; }
 .deckbar .keys {
   font-family: var(--f-mono);
   font-size: 10.5px;
@@ -726,12 +736,12 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   </button>
   <button id="open">Open</button>
   <button id="new">New deck</button>
-  <span class="spacer"></span>
-  <div class="state"><span class="pulse"></span><span id="status">Loading</span></div>
-  <button id="problems" class="chipbtn">no problems</button>
   <button id="copy" title="Copy presentation.md to the clipboard">Copy md</button>
   <button id="mode" class="icon" title="Light or dark editor" aria-label="Light or dark editor" aria-pressed="false">☾</button>
   <button id="save" class="primary">Save</button>
+  <span class="spacer"></span>
+  <div class="state"><span class="pulse"></span><span id="status">Loading</span></div>
+  <button id="problems" class="chipbtn">no problems</button>
 </div>
 
 <div class="barpop" id="barpop" hidden></div>
@@ -744,9 +754,11 @@ textarea.notes { min-height: 52px; font-size: 12.5px; }
   <div class="divider" id="divider" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize editor and deck"></div>
   <div class="deck">
     <div class="deckbar">
-      <span class="lbl">Deck</span>
-      <span class="chip" id="d-style">—</span>
-      <span class="chip" id="d-fit"></span>
+      <div class="left">
+        <span class="lbl">Deck</span>
+        <span class="chip" id="d-style">—</span>
+        <span class="chip" id="d-fit"></span>
+      </div>
       <div class="nav">
         <button class="icon" id="prev" aria-label="Previous slide">◀</button>
         <span class="count" id="count">0 / 0</span>
@@ -958,12 +970,28 @@ function reloadPreview() {
   preview().src = 'preview/?r=' + Date.now() + '#/' + current;
 }
 
-/* The frame is told which slide to show through the hash reveal keeps its place
-   in, so the deck follows the panel being edited without being reloaded. */
+/* The frame is moved by asking reveal, which then writes its own hash, so the
+   deck follows the panel being edited without being reloaded.
+
+   Writing the hash from here instead works only while reveal's hashchange
+   listener runs ahead of the one below: a swap that calls Reveal.sync() unbinds
+   and rebinds reveal's listeners, which puts reveal behind the editor. The
+   editor then reads a deck that has not moved yet, takes it for a move somebody
+   made in the frame, and writes the old slide back into the hash, so the buttons
+   stop moving the deck until the page is loaded again. The hash is what carries
+   the slide before reveal is up, which is the moment the frame is loading. */
 function showSlide(i) {
   try {
+    const win = preview().contentWindow;
+
+    if (win.Reveal && typeof win.Reveal.slide === 'function') {
+      if (win.Reveal.getIndices().h !== i) win.Reveal.slide(i);
+
+      return;
+    }
+
     const target = '#/' + i;
-    if (preview().contentWindow.location.hash !== target) preview().contentWindow.location.hash = target;
+    if (win.location.hash !== target) win.location.hash = target;
   } catch (err) { /* the frame is still loading */ }
 }
 
@@ -1271,8 +1299,10 @@ function remembered() {
 function showBarPop(html, left) {
   const pop = el('barpop');
   pop.innerHTML = html;
-  pop.style.left = Math.max(14, left) + 'px';
   pop.hidden = false;
+  // The problems button sits at the right end of the bar, so a pop opened under
+  // it is held back to the window rather than opening off the edge.
+  pop.style.left = Math.max(14, Math.min(left, document.documentElement.clientWidth - pop.offsetWidth - 14)) + 'px';
 
   const first = pop.querySelector('input, button');
   if (first) first.focus();
