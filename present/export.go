@@ -61,13 +61,22 @@ var (
 	styleBreakRe = regexp.MustCompile(`(?i)</style`)
 )
 
-// exportOptions are the parts of an export a test replaces. Export takes none:
-// where an avatar is fetched from is not the caller's to choose.
+// ExportOptions are the settings ExportWith takes.
+type ExportOptions struct {
+	// ColorMode is the mode the file opens in. light and dark are written onto
+	// the page as its data-theme; anything else, auto included, writes nothing
+	// and the file follows its reader's system.
+	ColorMode string
+}
+
+// exportOptions are the parts of an export a test replaces, beside the caller's
+// own. Where an avatar is fetched from is not the caller's to choose.
 type exportOptions struct {
 	client *http.Client
 	// host stands in for avatarHost, so a test fetches from its own server
 	// rather than from github.com.
-	host string
+	host      string
+	colorMode string
 }
 
 // Export renders deck through theme into one HTML file that opens from file://
@@ -85,8 +94,13 @@ func Export(deck *Deck, theme *Theme) ([]byte, []Problem, error) {
 	return export(deck, theme, exportOptions{})
 }
 
+// ExportWith is Export with the settings opts carries.
+func ExportWith(deck *Deck, theme *Theme, opts ExportOptions) ([]byte, []Problem, error) {
+	return export(deck, theme, exportOptions{colorMode: opts.ColorMode})
+}
+
 func export(deck *Deck, theme *Theme, opts exportOptions) ([]byte, []Problem, error) {
-	rendered, err := RenderDeck(deck, theme, RenderOptions{})
+	rendered, err := RenderDeck(deck, theme, RenderOptions{ColorMode: opts.colorMode})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -113,7 +127,7 @@ func export(deck *Deck, theme *Theme, opts exportOptions) ([]byte, []Problem, er
 			problems = append(problems, *problem)
 		}
 
-		rendered, err = RenderDeck(deck, theme, RenderOptions{Avatar: &avatar})
+		rendered, err = RenderDeck(deck, theme, RenderOptions{Avatar: &avatar, ColorMode: opts.colorMode})
 		if err != nil {
 			return nil, problems, err
 		}

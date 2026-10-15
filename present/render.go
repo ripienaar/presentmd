@@ -68,6 +68,22 @@ const (
 	// the browser cannot update. The live page compares its own against the one
 	// on the page it fetched and reloads when they differ.
 	shellMeta = "planboard-shell"
+
+	// colorModeLight and colorModeDark are the two modes a page is forced into.
+	// Every other value is auto, which writes nothing and leaves the page to the
+	// viewer's system.
+	colorModeLight = "light"
+	colorModeDark  = "dark"
+
+	// htmlTag is the page's opening tag, which is where a mode is written as its
+	// data-theme.
+	htmlTag = `<html lang="en">`
+
+	// darkAutoSelector and darkForcedSelector are the roots a theme writes its dark
+	// tokens under: a page following a dark system that was not forced light, and
+	// a page forced dark. The dark code stylesheet is scoped by the same two.
+	darkAutoSelector   = `:root:not([data-theme="light"])`
+	darkForcedSelector = `:root[data-theme="dark"]`
 )
 
 // transitions and transitionSpeeds are reveal's own value sets. Reveal drops a
@@ -113,6 +129,15 @@ type RenderOptions struct {
 	// the slot empty rather than pointing a file that opens offline at
 	// github.com. A nil pointer leaves the avatar as the presentation named it.
 	Avatar *string
+	// ColorMode is the mode the page opens in. light and dark are written onto
+	// the page as its data-theme; anything else, auto included, writes nothing and
+	// the page follows the viewer's system. A handler serving one rendering to
+	// every viewer leaves it empty and writes the mode per request instead.
+	ColorMode string
+	// ColorModeCookie is the cookie the page's T key writes the mode to, so the
+	// server can serve the next page in it. Empty writes no cookie, and a mode
+	// picked with T lasts for that viewing.
+	ColorModeCookie string
 }
 
 // RenderedDeck is a deck as a page: the HTML, the files that page names, and
@@ -150,6 +175,7 @@ func RenderDeck(deck *Deck, theme *Theme, opts RenderOptions) (*RenderedDeck, er
 	}
 
 	md := newSlideMarkdown(theme.Config.CodeStyle)
+	md.codeStyleDark = theme.Config.CodeStyleDark
 	out := &RenderedDeck{}
 
 	show := &deck.Presentation
@@ -618,6 +644,10 @@ type fontProperty struct {
 // html/template because the sections and chroma's stylesheet are finished HTML
 // and CSS, and contextual escaping would rewrite both.
 type pageData struct {
+	// HTMLTag is the page's opening tag, carrying the forced mode when there is
+	// one.
+	HTMLTag         string
+	ColorModeCookie string
 	Title           string
 	ResetCSS        string
 	RevealCSS       string
@@ -715,8 +745,10 @@ const baseCSS = `
 // speaker view is what a slide's notes are for. Every rendering carries the
 // escape script, which does nothing until the page finds itself in a frame, so
 // an export and a deck under present serve are the same file the board serves.
+// The color mode script is in the head so a forced mode is on the root before
+// anything is drawn.
 const pageTemplate = `<!doctype html>
-<html lang="en">
+{{ .HTMLTag }}
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -724,6 +756,88 @@ const pageTemplate = `<!doctype html>
 <meta name="` + shellMeta + `" content="{{ .Shell }}">
 {{- end }}
 <title>{{ .Title }}</title>
+<script>
+(function () {
+  var root = document.documentElement;
+
+  // Reveal draws its print-pdf view on screen, where a theme's dark tokens and
+  // the dark code style apply, so that view is forced light and a deck saved as
+  // a PDF is the light one whatever mode it was being shown in.
+  if (/print-pdf/i.test(window.location.search)) {
+    root.setAttribute("data-theme", "light");
+
+    return;
+  }
+
+  // A deck in a frame leaves T to the page around it, which owns the mode and
+  // writes it into the frame itself.
+  if (window.top !== window.self) {
+    return;
+  }
+
+  var cookie = "{{ .ColorModeCookie }}";
+  var next = { auto: "light", light: "dark", dark: "auto" };
+  var year = 60 * 60 * 24 * 365;
+
+  var current = function () {
+    var mode = root.getAttribute("data-theme");
+
+    return mode === "light" || mode === "dark" ? mode : "auto";
+  };
+
+  var editing = function (target) {
+    if (!target || !target.tagName) {
+      return false;
+    }
+
+    if (target.isContentEditable) {
+      return true;
+    }
+
+    var tag = target.tagName.toLowerCase();
+
+    return tag === "input" || tag === "textarea" || tag === "select";
+  };
+
+  // Reveal binds no T of its own. A modifier leaves the key to the browser, so
+  // Ctrl+T and Cmd+T still open a tab, and a key typed into reveal's jump to
+  // slide prompt is text.
+  window.addEventListener("keydown", function (event) {
+    if (event.key !== "t" && event.key !== "T") {
+      return;
+    }
+
+    // A held key repeats, and each repeat would move the mode on again.
+    if (event.repeat) {
+      return;
+    }
+
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    if (editing(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+
+    var mode = next[current()];
+
+    if (mode === "auto") {
+      root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", mode);
+    }
+
+    // Auto is written too, so a server whose own default is not auto serves the
+    // next page the way the viewer left it.
+    if (cookie !== "") {
+      document.cookie = cookie + "=" + mode + "; Path=/; SameSite=Lax; Max-Age=" + year;
+    }
+  });
+})();
+</script>
 <link rel="stylesheet" href="{{ .ResetCSS }}">
 <link rel="stylesheet" href="{{ .RevealCSS }}">
 <style>
@@ -999,6 +1113,8 @@ var page = template.Must(template.New("page").Parse(pageTemplate))
 
 func renderPage(show *Presentation, theme *Theme, sections string, stylesheet string, move deckTransition, files string, opts RenderOptions) (string, error) {
 	data := pageData{
+		HTMLTag:         colorModeTag(opts.ColorMode),
+		ColorModeCookie: jsString(cookieName(opts.ColorModeCookie)),
 		Title:           html.EscapeString(show.Title),
 		ResetCSS:        opts.assetRef(revealPrefix, revealResetCSS),
 		RevealCSS:       opts.assetRef(revealPrefix, revealCoreCSS),
@@ -1027,6 +1143,36 @@ func renderPage(show *Presentation, theme *Theme, sections string, stylesheet st
 	}
 
 	return out.String(), nil
+}
+
+// colorModeTag is the page's opening tag in a mode. Light and dark are written
+// from the constants here rather than from the value passed, so nothing a caller
+// or a request carries reaches the page, and every other value is the bare tag.
+func colorModeTag(mode string) string {
+	switch mode {
+	case colorModeLight:
+		return `<html lang="en" data-theme="` + colorModeLight + `">`
+	case colorModeDark:
+		return `<html lang="en" data-theme="` + colorModeDark + `">`
+	}
+
+	return htmlTag
+}
+
+// cookieName is a cookie name with every character a cookie name cannot hold
+// dropped, so a name passed in cannot write a second attribute into the cookie
+// the page sets.
+func cookieName(name string) string {
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			return r
+		case strings.ContainsRune("!#$%&'*+-.^_|~", r):
+			return r
+		}
+
+		return -1
+	}, name)
 }
 
 // assetRef is where the page points at one of its own support files. The prefix

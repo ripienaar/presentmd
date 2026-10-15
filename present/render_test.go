@@ -1526,3 +1526,265 @@ func TestRenderDeckSlideDigestsSplitAttributesFromBody(t *testing.T) {
 		t.Error("a slide that changed its background kept its attribute digest")
 	}
 }
+
+// darkCodeTheme is a theme naming a dark code style beside its light one.
+func darkCodeTheme(t *testing.T) *Theme {
+	t.Helper()
+
+	dir := writeTheme(t, map[string]string{
+		"theme.yaml":      "code_style: github\ncode_style_dark: github-dark\n",
+		"styles/code.jet": `<div class="body">{{ raw: body }}</div>` + "\n",
+	})
+
+	theme, err := LoadTheme(dir, deckDir)
+	if err != nil {
+		t.Fatalf("cannot load a theme naming a dark code style: %v", err)
+	}
+
+	return theme
+}
+
+// TestRenderDeckScopesTheDarkCodeStyle pins that a theme's dark code style is
+// written after the light one, with every rule under the two roots a theme's
+// dark tokens are written under and inside a screen query, and that every
+// light rule has a dark one over it, unsetting what the dark style leaves alone.
+func TestRenderDeckScopesTheDarkCodeStyle(t *testing.T) {
+	out := renderSlides(t, darkCodeTheme(t), renderShow(),
+		&Slide{Path: "01-code.md", PageStyle: "code", Markdown: "```go\nfunc main() {}\n```\n"},
+	)
+
+	noProblems(t, out)
+
+	opening := "@media screen {\n@media (prefers-color-scheme: dark) {\n"
+
+	start := strings.Index(out.HTML, opening)
+	if start < 0 {
+		t.Fatal("the page carries no dark code stylesheet")
+	}
+
+	if !strings.Contains(out.HTML[:start], "/* PreWrapper */ .chroma {") {
+		t.Error("the light code stylesheet is not written unscoped ahead of the dark one")
+	}
+
+	end := strings.Index(out.HTML[start:], "</style>")
+	if end < 0 {
+		t.Fatal("the dark code stylesheet runs past its style element")
+	}
+
+	dark := out.HTML[start+len(opening) : start+end]
+
+	auto := 0
+	forced := 0
+
+	for line := range strings.Lines(dark) {
+		line = strings.TrimSpace(line)
+
+		switch {
+		case line == "}":
+		case strings.HasPrefix(line, ":where("+darkAutoSelector+") "):
+			auto++
+		case strings.HasPrefix(line, ":where("+darkForcedSelector+") "):
+			forced++
+		default:
+			t.Errorf("a dark rule applies outside a dark page: %s", line)
+		}
+	}
+
+	if auto == 0 || auto != forced {
+		t.Errorf("the dark rules are written %d times under auto and %d forced, want the same set under both", auto, forced)
+	}
+
+	md := newSlideMarkdown("github")
+
+	light, err := md.cssRules("github")
+	if err != nil {
+		t.Fatalf("cannot read the light rules: %v", err)
+	}
+
+	darkRules, err := md.cssRules("github-dark")
+	if err != nil {
+		t.Fatalf("cannot read the dark rules: %v", err)
+	}
+
+	darkProperties := map[string][]string{}
+
+	for _, rule := range darkRules {
+		for _, declaration := range rule.declarations {
+			darkProperties[rule.selector] = append(darkProperties[rule.selector], declarationProperty(declaration))
+		}
+	}
+
+	for _, rule := range light {
+		scoped := ":where(" + darkForcedSelector + ") " + rule.selector + " {"
+
+		at := strings.Index(dark, scoped)
+		if at < 0 {
+			t.Errorf("the light rule for %s has no dark rule over it", rule.selector)
+
+			continue
+		}
+
+		line, _, _ := strings.Cut(dark[at:], "\n")
+
+		for _, declaration := range rule.declarations {
+			property := declarationProperty(declaration)
+			if slices.Contains(darkProperties[rule.selector], property) {
+				continue
+			}
+
+			if !strings.Contains(line, property+": unset") {
+				t.Errorf("%s under dark leaves the light %s in force: %s", rule.selector, property, line)
+			}
+		}
+	}
+}
+
+// TestRenderDeckWithoutADarkCodeStyle pins that a theme naming no dark code
+// style writes the one stylesheet it always has.
+func TestRenderDeckWithoutADarkCodeStyle(t *testing.T) {
+	out := renderSlides(t, loadDefaultTheme(t), renderShow(),
+		&Slide{Path: "01-code.md", PageStyle: "code", Markdown: "```go\nfunc main() {}\n```\n"},
+	)
+
+	noProblems(t, out)
+
+	if strings.Contains(out.HTML, "prefers-color-scheme") || strings.Contains(out.HTML, darkForcedSelector) {
+		t.Error("a theme with no dark code style carries dark rules")
+	}
+}
+
+// TestRenderDeckDarkCodeKeepsChromaSpecificity pins that the dark scope counts
+// for nothing: outside the :where() every dark rule is a selector chroma itself
+// writes, so a theme's own rule such as .reveal .chroma, which outranks chroma's
+// light rule, outranks the dark one too.
+func TestRenderDeckDarkCodeKeepsChromaSpecificity(t *testing.T) {
+	out := renderSlides(t, darkCodeTheme(t), renderShow(),
+		&Slide{Path: "01-code.md", PageStyle: "code", Markdown: "```go\nfunc main() {}\n```\n"},
+	)
+
+	noProblems(t, out)
+
+	md := newSlideMarkdown("github")
+
+	chromaSelectors := map[string]bool{}
+
+	for _, style := range []string{"github", "github-dark"} {
+		rules, err := md.cssRules(style)
+		if err != nil {
+			t.Fatalf("cannot read the %s rules: %v", style, err)
+		}
+
+		for _, rule := range rules {
+			chromaSelectors[rule.selector] = true
+		}
+	}
+
+	scopes := []string{":where(" + darkAutoSelector + ") ", ":where(" + darkForcedSelector + ") "}
+
+	checked := 0
+
+	for line := range strings.Lines(out.HTML) {
+		for _, scope := range scopes {
+			rest, ok := strings.CutPrefix(line, scope)
+			if !ok {
+				continue
+			}
+
+			selector, _, _ := strings.Cut(rest, " {")
+			if !chromaSelectors[selector] {
+				t.Errorf("a dark rule is more specific than chroma's own: %s", strings.TrimSpace(line))
+			}
+
+			checked++
+		}
+	}
+
+	if checked == 0 {
+		t.Fatal("the page carries no scoped dark rule")
+	}
+
+	if !strings.Contains(out.HTML, ":where("+darkForcedSelector+") .chroma { ") {
+		t.Error("the dark wrapper rule is not written at chroma's own .chroma specificity")
+	}
+}
+
+// titleDeck is a deck of one title slide built in memory.
+func titleDeck() *Deck {
+	return &Deck{
+		Dir:          "testdata",
+		Presentation: *renderShow(),
+		Slides:       []*Slide{{Path: "01-title.md", PageStyle: "title", Markdown: "# A Talk\n"}},
+	}
+}
+
+// TestRenderDeckColorMode pins that light and dark are written onto the html tag
+// and that every other value, an attempt to write markup included, leaves the
+// page as a rendering with no mode.
+func TestRenderDeckColorMode(t *testing.T) {
+	plain, err := RenderDeck(titleDeck(), loadDefaultTheme(t), RenderOptions{})
+	if err != nil {
+		t.Fatalf("the deck did not render: %v", err)
+	}
+
+	cases := map[string]string{
+		"light":                  `<html lang="en" data-theme="light">`,
+		"dark":                   `<html lang="en" data-theme="dark">`,
+		"auto":                   htmlTag,
+		"DARK":                   htmlTag,
+		`dark" onload="alert(1)`: htmlTag,
+	}
+
+	for mode, want := range cases {
+		out, err := RenderDeck(titleDeck(), loadDefaultTheme(t), RenderOptions{ColorMode: mode})
+		if err != nil {
+			t.Fatalf("the deck did not render: %v", err)
+		}
+
+		if !strings.HasPrefix(out.HTML, "<!doctype html>\n"+want+"\n") {
+			t.Errorf("mode %q opens the page with %q, want %s", mode, strings.SplitN(out.HTML, "\n", 3)[1], want)
+		}
+
+		if want == htmlTag && out.HTML != plain.HTML {
+			t.Errorf("mode %q changed the page from a rendering with no mode", mode)
+		}
+	}
+}
+
+// TestRenderDeckColorModeScript pins the T switch every page carries in its
+// head: it forces the print-pdf view light, leaves T to the page around a frame,
+// keeps the browser's own modified keys, and writes the cookie only when one is
+// named, with the name stripped to what a cookie name may hold.
+func TestRenderDeckColorModeScript(t *testing.T) {
+	cases := map[string]string{
+		"":                       `var cookie = "";`,
+		"deck-mode":              `var cookie = "deck-mode";`,
+		`a=b; Domain=x"</script`: `var cookie = "abDomainxscript";`,
+	}
+
+	for name, want := range cases {
+		out, err := RenderDeck(titleDeck(), loadDefaultTheme(t), RenderOptions{ColorModeCookie: name})
+		if err != nil {
+			t.Fatalf("the deck did not render: %v", err)
+		}
+
+		head, _, _ := strings.Cut(out.HTML, "</head>")
+
+		for _, fragment := range []string{
+			want,
+			`if (/print-pdf/i.test(window.location.search)) {`,
+			`root.setAttribute("data-theme", "light");`,
+			"if (window.top !== window.self) {",
+			`if (event.key !== "t" && event.key !== "T") {`,
+			"if (event.repeat) {",
+			"if (event.ctrlKey || event.metaKey || event.altKey) {",
+			"if (editing(event.target)) {",
+			`root.removeAttribute("data-theme");`,
+			`if (cookie !== "") {`,
+			`"=" + mode + "; Path=/; SameSite=Lax; Max-Age=" + year`,
+		} {
+			if !strings.Contains(head, fragment) {
+				t.Errorf("cookie %q: the head does not carry %q", name, fragment)
+			}
+		}
+	}
+}

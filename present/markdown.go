@@ -3,6 +3,7 @@ package present
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -27,7 +28,13 @@ type slideMarkdown struct {
 	// with, since the line number rules only reach the sheet when the formatter
 	// that writes it was asked for line numbers too.
 	chromaFormatter *chromahtml.Formatter
-	codeStyle       string
+	// ruleFormatter is chromaFormatter without the comment it writes ahead of
+	// each rule, which is the form the dark stylesheet is read back in.
+	ruleFormatter *chromahtml.Formatter
+	codeStyle     string
+	// codeStyleDark is the theme's dark code style, and is empty for a theme
+	// whose code is colored the same in either mode.
+	codeStyleDark string
 	// slidePrefix is set before each slide renders and is what keeps the ids of
 	// one slide from colliding with another's on the single page the deck
 	// becomes. The renderer works one slide at a time, so a field carries it
@@ -137,6 +144,7 @@ func newSlideMarkdown(codeStyle string) *slideMarkdown {
 	m := &slideMarkdown{
 		codeStyle:       codeStyle,
 		chromaFormatter: chromahtml.New(formatOptions...),
+		ruleFormatter:   chromahtml.New(append(slices.Clone(formatOptions), chromahtml.WithCSSComments(false))...),
 	}
 
 	// The footnote ids carry the slide in front of them for the reason the
@@ -189,7 +197,8 @@ func newSlideMarkdown(codeStyle string) *slideMarkdown {
 
 // stylesheet is chroma's CSS for the theme's code style, written once for the
 // whole page. A style name chroma does not know falls back to chroma's own,
-// which colors the code rather than leaving a deck with none.
+// which colors the code rather than leaving a deck with none. A theme naming a
+// dark code style has that style's rules written after, scoped to a dark page.
 func (m *slideMarkdown) stylesheet() (string, error) {
 	var out bytes.Buffer
 
@@ -198,7 +207,144 @@ func (m *slideMarkdown) stylesheet() (string, error) {
 		return "", fmt.Errorf("%w: %w", ErrCodeStylesheet, err)
 	}
 
+	if m.codeStyleDark == "" {
+		return out.String(), nil
+	}
+
+	dark, err := m.darkStylesheet()
+	if err != nil {
+		return "", err
+	}
+
+	out.WriteString(dark)
+
 	return out.String(), nil
+}
+
+// cssRule is one rule of chroma's stylesheet: a selector and its declarations,
+// each written as "property: value".
+type cssRule struct {
+	selector     string
+	declarations []string
+}
+
+// darkStylesheet is the dark code style's rules under the two selectors a theme
+// writes its dark tokens with, inside a screen query so a printed deck keeps
+// the light code.
+//
+// The light rules stay in force underneath, so every property the light style
+// sets and the dark one does not is unset in the dark copy. Without that a class
+// only the light style colors keeps its dark ink on the dark ground.
+func (m *slideMarkdown) darkStylesheet() (string, error) {
+	light, err := m.cssRules(m.codeStyle)
+	if err != nil {
+		return "", err
+	}
+
+	dark, err := m.cssRules(m.codeStyleDark)
+	if err != nil {
+		return "", err
+	}
+
+	rules := make([]cssRule, 0, len(dark)+len(light))
+	seen := map[string]int{}
+
+	for _, rule := range dark {
+		seen[rule.selector] = len(rules)
+		rules = append(rules, rule)
+	}
+
+	for _, rule := range light {
+		at, ok := seen[rule.selector]
+		if !ok {
+			at = len(rules)
+			seen[rule.selector] = at
+			rules = append(rules, cssRule{selector: rule.selector})
+		}
+
+		for _, declaration := range rule.declarations {
+			property := declarationProperty(declaration)
+			if slices.ContainsFunc(rules[at].declarations, func(have string) bool { return declarationProperty(have) == property }) {
+				continue
+			}
+
+			rules[at].declarations = append(rules[at].declarations, property+": unset")
+		}
+	}
+
+	var out strings.Builder
+
+	out.WriteString("@media screen {\n@media (prefers-color-scheme: dark) {\n")
+	writeScopedRules(&out, darkAutoSelector, rules)
+	out.WriteString("}\n")
+	writeScopedRules(&out, darkForcedSelector, rules)
+	out.WriteString("}\n")
+
+	return out.String(), nil
+}
+
+// cssRules reads chroma's stylesheet for a style back into its rules. The
+// formatter writes one rule a line, so a line of any other shape is chroma
+// changing its output rather than anything a theme wrote.
+func (m *slideMarkdown) cssRules(style string) ([]cssRule, error) {
+	var css bytes.Buffer
+
+	err := m.ruleFormatter.WriteCSS(&css, styles.Get(style))
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCodeStylesheet, err)
+	}
+
+	var rules []cssRule
+
+	for line := range strings.Lines(css.String()) {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		selector, body, ok := strings.Cut(line, "{")
+		if !ok || !strings.HasSuffix(body, "}") {
+			return nil, fmt.Errorf("%w: unexpected rule %q", ErrCodeStylesheet, line)
+		}
+
+		rule := cssRule{selector: strings.TrimSpace(selector)}
+
+		for _, declaration := range strings.Split(strings.TrimSuffix(body, "}"), ";") {
+			declaration = strings.TrimSpace(declaration)
+			if declaration == "" {
+				continue
+			}
+
+			rule.declarations = append(rule.declarations, declaration)
+		}
+
+		rules = append(rules, rule)
+	}
+
+	return rules, nil
+}
+
+// declarationProperty is the property a declaration sets.
+func declarationProperty(declaration string) string {
+	property, _, _ := strings.Cut(declaration, ":")
+
+	return strings.TrimSpace(property)
+}
+
+// writeScopedRules writes each rule with scope in front of every selector it
+// holds, so the rule applies only below a root the scope matches. The scope is
+// inside :where(), which counts for nothing, so a dark rule has chroma's own
+// specificity: it wins over the light rule by coming after it, and a theme's own
+// rule for the code still wins over both.
+func writeScopedRules(out *strings.Builder, scope string, rules []cssRule) {
+	for _, rule := range rules {
+		selectors := strings.Split(rule.selector, ",")
+		for i, selector := range selectors {
+			selectors[i] = ":where(" + scope + ") " + strings.TrimSpace(selector)
+		}
+
+		fmt.Fprintf(out, "%s { %s; }\n", strings.Join(selectors, ", "), strings.Join(rule.declarations, "; "))
+	}
 }
 
 // slideBody is one slide's markdown after the parts a template places
