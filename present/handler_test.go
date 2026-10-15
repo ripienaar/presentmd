@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -597,5 +598,111 @@ func TestReloadWatchesADirectoryThemeAdoptedLater(t *testing.T) {
 
 	if !found {
 		t.Errorf("the theme directory %s is not watched, watching %v", themeDir, watched)
+	}
+}
+
+// colorModeHandler is a handler over a fresh copy of the test deck built with
+// opts, alongside the page RenderDeck makes of that deck with the options the
+// handler renders with.
+func colorModeHandler(t *testing.T, opts HandlerOptions) (*DeckHandler, string) {
+	t.Helper()
+
+	dir := writeDeck(t)
+
+	deck, err := LoadDeck(dir)
+	if err != nil {
+		t.Fatalf("the deck did not load: %v", err)
+	}
+
+	theme, err := LoadTheme(deck.Presentation.Theme, dir)
+	if err != nil {
+		deck.Close()
+
+		t.Fatalf("the theme did not load: %v", err)
+	}
+
+	opts.Log = handlerLogger()
+
+	handler, err := Handler(deck, theme, opts)
+	if err != nil {
+		deck.Close()
+
+		t.Fatalf("the handler was not built: %v", err)
+	}
+
+	t.Cleanup(func() { handler.Close() })
+
+	rendered, err := RenderDeck(deck, theme, handler.renderOptions())
+	if err != nil {
+		t.Fatalf("the deck did not render: %v", err)
+	}
+
+	return handler, rendered.HTML
+}
+
+// TestHandlerStampsTheColorMode pins that a handler given a ColorMode serves the
+// cached page with light or dark written onto its html tag, and with the page as
+// rendered for auto and for anything the function answers that is not a mode.
+func TestHandlerStampsTheColorMode(t *testing.T) {
+	handler, page := colorModeHandler(t, HandlerOptions{
+		ColorMode: func(r *http.Request) string {
+			return r.URL.Query().Get("mode")
+		},
+		ColorModeCookie: "deck-mode",
+	})
+
+	cases := map[string]string{
+		"light":                  `<html lang="en" data-theme="light">`,
+		"dark":                   `<html lang="en" data-theme="dark">`,
+		"auto":                   htmlTag,
+		"":                       htmlTag,
+		"sepia":                  htmlTag,
+		`dark" onload="alert(1)`: htmlTag,
+	}
+
+	for mode, want := range cases {
+		response := get(t, handler, "/?mode="+url.QueryEscape(mode))
+		if response.Code != http.StatusOK {
+			t.Fatalf("mode %q answered %d, want 200", mode, response.Code)
+		}
+
+		if response.Header().Get("Cache-Control") != "no-store" {
+			t.Errorf("mode %q is served with Cache-Control %q, want no-store", mode, response.Header().Get("Cache-Control"))
+		}
+
+		body := response.Body.String()
+
+		if body != strings.Replace(page, htmlTag, want, 1) {
+			t.Errorf("mode %q is not the rendered page with %s as its html tag", mode, want)
+		}
+
+		if !strings.Contains(body, `var cookie = "deck-mode";`) {
+			t.Errorf("mode %q: the page does not write the cookie the handler names", mode)
+		}
+	}
+}
+
+// TestHandlerWithoutAColorModeServesThePageAsRendered pins that a handler with
+// no ColorMode serves the bytes the render made, whatever the request carries,
+// and that a page with no cookie named writes none.
+func TestHandlerWithoutAColorModeServesThePageAsRendered(t *testing.T) {
+	handler, page := colorModeHandler(t, HandlerOptions{})
+
+	if handler.pageLight != nil || handler.pageDark != nil {
+		t.Error("a handler with no ColorMode built the stamped pages")
+	}
+
+	body := get(t, handler, "/?mode=dark").Body.String()
+
+	if body != page {
+		t.Error("a handler with no ColorMode changed the page it serves")
+	}
+
+	if !strings.HasPrefix(body, "<!doctype html>\n"+htmlTag+"\n") {
+		t.Error("a handler with no ColorMode wrote a mode onto the page")
+	}
+
+	if !strings.Contains(body, `var cookie = "";`) {
+		t.Error("a handler naming no cookie serves a page that writes one")
 	}
 }

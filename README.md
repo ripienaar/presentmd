@@ -45,8 +45,8 @@ talk starts with them filled in.
 
 The top bar counts what is wrong with the deck and lists it: the same problems
 `serve` prints, against the same files. Beside it, `☾` puts the editor's own
-chrome into dark, which the deck below never follows: a slide is whatever its
-theme makes it, on the projector and here.
+chrome into dark, and the deck below follows it when its theme carries dark
+tokens; a theme without them stays light.
 
 `Help` slides out a panel of what a slide can write that markdown does not
 already say: the page styles, the frontmatter keys, the tints, and the keys the
@@ -206,6 +206,7 @@ It is described in [the editor](#the-editor).
 | `S`     | the speaker view, with your notes and the next slide |
 | `F`     | fullscreen             |
 | `ESC`   | the slide overview     |
+| `T`     | the color mode: auto, light and dark, on a theme that has a dark set |
 | `?`     | reveal's own help      |
 
 The speaker view is a second window, so put it on the laptop screen and the deck
@@ -375,6 +376,7 @@ watched along with the deck, so editing its CSS reloads the browser.
 A theme is a directory of:
 
 - `theme.yaml` — `code_style`, the chroma style fenced code is highlighted with;
+  `code_style_dark`, the one it is highlighted with on a dark page;
   `split_styles`, the page styles a `---` divides; `fonts`, the three stacks the
   stylesheet reads; and `transition`, the theme's own move, which a deck overrides.
 - `theme.css` — the whole look. Font files it names with `url()` are served from
@@ -393,6 +395,28 @@ sizes and tints coloured from `--accent` and `--ink-3`. A theme picks its own by
 setting `--tint-accent`, `--tint-muted`, `--tint-good`, `--tint-bad`,
 `--check-box` and `--check-mark`, or overrides the rules outright: its stylesheet
 is loaded after.
+
+A theme carries a dark mode by writing its color tokens a second time, under the
+two roots the page's `T` switch sets, inside `@media screen` so a printed deck
+stays light:
+
+```css
+:root { color-scheme: light dark; --ground: #fbfaf7; --ink: #1d1d1b; }
+:root[data-theme="light"] { color-scheme: light; }
+@media print { :root, :root[data-theme] { color-scheme: light; } }
+
+@media screen {
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --ground: #16181d; --ink: #e8e6e1; }
+  }
+  :root[data-theme="dark"] { color-scheme: dark; --ground: #16181d; --ink: #e8e6e1; }
+}
+```
+
+The first follows a dark system unless the viewer picked light, the second is a
+viewer picking dark. `code_style_dark` is written under the same two, wrapped in
+`:where()` so a theme's own rules for the code still win over it, and the
+`?print-pdf` view is always light. A theme with no dark set stays light.
 
 ## Claude Code skills
 

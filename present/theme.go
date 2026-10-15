@@ -86,6 +86,10 @@ type ThemeConfig struct {
 	// CodeStyle is the chroma style fenced code is colored with, applied once at
 	// render so the export carries no highlighter.
 	CodeStyle string `yaml:"code_style,omitempty"`
+	// CodeStyleDark is the chroma style fenced code is colored with when the page
+	// is dark, under the same selectors a theme writes its dark tokens with. A
+	// theme without it colors code with CodeStyle in either mode.
+	CodeStyleDark string `yaml:"code_style_dark,omitempty"`
 	// SplitStyles are the page styles whose body divides at its first thematic
 	// break. Naming them here is what lets a columns slide exist without the
 	// loader knowing anything about themes: in every other style a --- stays an

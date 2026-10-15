@@ -1750,6 +1750,7 @@ function focusSlide() {
 }
 
 el('preview').addEventListener('load', () => {
+  modeFrame();
   showSlide(current);
   checkFit();
 
@@ -1772,13 +1773,26 @@ el('preview').addEventListener('load', () => {
   } catch (err) { /* the frame reports on its next load */ }
 });
 
-/* the editor takes the switch; the deck in the frame is whatever its theme says */
+/* the editor takes the switch, and the deck in the frame follows it, so a theme
+   with a dark set previews in the editor's mode rather than the system's */
 function setMode(mode) {
   document.documentElement.dataset.mode = mode;
   el('mode').textContent = mode === 'dark' ? '☀' : '☾';
   el('mode').setAttribute('aria-pressed', mode === 'dark');
 
+  modeFrame();
+
   try { localStorage.setItem('presentmd-editor-mode', mode); } catch (err) { /* nothing to remember it with */ }
+}
+
+/* The mode is written onto the frame's root from the two fixed values, on every
+   switch and on every load of the frame, since a reload brings a fresh root. */
+function modeFrame() {
+  const mode = document.documentElement.dataset.mode === 'dark' ? 'dark' : 'light';
+
+  try {
+    preview().contentDocument.documentElement.setAttribute('data-theme', mode);
+  } catch (err) { /* the frame takes the mode on its next load */ }
 }
 
 el('mode').addEventListener('click', () => {

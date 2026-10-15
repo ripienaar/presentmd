@@ -486,3 +486,41 @@ func TestExportReportsAThemeImport(t *testing.T) {
 		t.Errorf("the import was not reported, problems are %v", problems)
 	}
 }
+
+// TestExportWithAColorMode pins that ExportWith bakes light or dark onto the
+// file's html tag, and that auto, or no mode at all, is the file Export writes.
+func TestExportWithAColorMode(t *testing.T) {
+	deck := exportDeck(t, map[string]string{
+		"presentation.yaml": "title: A Talk\ntheme: default\n",
+		"01-title.md":       "---\npage_style: title\n---\n\n# A Talk\n",
+	})
+
+	theme := loadDefaultTheme(t)
+
+	plain, _, err := Export(deck, theme)
+	if err != nil {
+		t.Fatalf("the export failed: %v", err)
+	}
+
+	if !strings.HasPrefix(string(plain), "<!doctype html>\n"+htmlTag+"\n") {
+		t.Error("Export wrote a mode onto the file")
+	}
+
+	cases := map[string]string{
+		"light": `<html lang="en" data-theme="light">`,
+		"dark":  `<html lang="en" data-theme="dark">`,
+		"auto":  htmlTag,
+		"":      htmlTag,
+	}
+
+	for mode, want := range cases {
+		page, _, err := ExportWith(deck, theme, ExportOptions{ColorMode: mode})
+		if err != nil {
+			t.Fatalf("mode %q: the export failed: %v", mode, err)
+		}
+
+		if string(page) != strings.Replace(string(plain), htmlTag, want, 1) {
+			t.Errorf("mode %q is not the exported file with %s as its html tag", mode, want)
+		}
+	}
+}

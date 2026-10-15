@@ -57,10 +57,11 @@ A deck reaches a theme of its own with a path: `theme: ./mytheme`
 page_style: code
 caption: theme.yaml, every key a theme may set
 notes: |-
-  code_style is a chroma style name. split_styles lists the page styles a
-  thematic break divides into two columns; a style left out of it treats --- as
-  a horizontal rule. transition is the theme's own move, and a deck that names
-  one overrides it.
+  code_style is a chroma style name, and code_style_dark the one code takes on a
+  dark page, for a theme that writes its tokens a second time for dark.
+  split_styles lists the page styles a thematic break divides into two columns;
+  a style left out of it treats --- as a horizontal rule. transition is the
+  theme's own move, and a deck that names one overrides it.
   
   The three font stacks reach the stylesheet as custom properties, so the CSS
   reads var(--font-body) rather than naming a family twice.
@@ -71,6 +72,7 @@ text_size: small
 
 ```yaml
 code_style: github
+code_style_dark: github-dark
 
 split_styles:
   - columns

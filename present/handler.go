@@ -49,6 +49,15 @@ type HandlerOptions struct {
 	// deck again on every save and would otherwise put the deck's own theme back
 	// the first time a slide is edited.
 	Theme string
+	// ColorMode names the mode each request's page is served in: light, dark or
+	// auto. The page is rendered once, so the mode is written onto the cached
+	// page as it is served, as a data-theme of light or dark from the package's
+	// own constants; auto and any other answer serve the page with none. A nil
+	// function serves the page as rendered.
+	ColorMode func(r *http.Request) string
+	// ColorModeCookie is the cookie the page's T key writes the mode to, which is
+	// what a ColorMode function reads back. Empty writes no cookie.
+	ColorModeCookie string
 }
 
 // DeckHandler serves one deck: the page at the root of its space, reveal and the
@@ -70,13 +79,22 @@ type DeckHandler struct {
 	// themeName is the caller's theme override, empty when the deck names its
 	// own.
 	themeName string
+	// colorMode names the mode a request is served in, and is nil for a handler
+	// serving the page as rendered.
+	colorMode       func(r *http.Request) string
+	colorModeCookie string
 
-	mu       sync.RWMutex
-	deck     *Deck
-	theme    *Theme
-	page     []byte
-	assets   []string
-	problems []Problem
+	mu    sync.RWMutex
+	deck  *Deck
+	theme *Theme
+	page  []byte
+	// pageLight and pageDark are the page with each forced mode written onto it,
+	// built on every update when colorMode is set so a request picks one rather
+	// than copying the page.
+	pageLight []byte
+	pageDark  []byte
+	assets    []string
+	problems  []Problem
 }
 
 // Handler renders deck through theme and returns the handler that serves it. The
@@ -89,12 +107,14 @@ func Handler(deck *Deck, theme *Theme, opts HandlerOptions) (*DeckHandler, error
 	}
 
 	h := &DeckHandler{
-		log:       log,
-		mux:       http.NewServeMux(),
-		settle:    deckSettle,
-		report:    opts.Report,
-		eventsURL: opts.EventsURL,
-		themeName: opts.Theme,
+		log:             log,
+		mux:             http.NewServeMux(),
+		settle:          deckSettle,
+		report:          opts.Report,
+		eventsURL:       opts.EventsURL,
+		themeName:       opts.Theme,
+		colorMode:       opts.ColorMode,
+		colorModeCookie: opts.ColorModeCookie,
 	}
 
 	if opts.Live {
@@ -134,13 +154,24 @@ func (h *DeckHandler) Update(deck *Deck, theme *Theme) error {
 	problems = append(problems, deck.Problems...)
 	problems = append(problems, rendered.Problems...)
 
+	page := []byte(rendered.HTML)
+
+	var light, dark []byte
+
+	if h.colorMode != nil {
+		light = stampColorMode(page, colorModeLight)
+		dark = stampColorMode(page, colorModeDark)
+	}
+
 	h.mu.Lock()
 
 	held := h.deck
 
 	h.deck = deck
 	h.theme = theme
-	h.page = []byte(rendered.HTML)
+	h.page = page
+	h.pageLight = light
+	h.pageDark = dark
 	h.assets = rendered.Assets
 	h.problems = problems
 
@@ -212,16 +243,36 @@ func (h *DeckHandler) Close() error {
 // rendering serve at / under present serve and under the board's deck path.
 func (h *DeckHandler) renderOptions() RenderOptions {
 	if h.live == nil {
-		return RenderOptions{EventsURL: h.eventsURL}
+		return RenderOptions{EventsURL: h.eventsURL, ColorModeCookie: h.colorModeCookie}
 	}
 
-	return RenderOptions{EventsURL: eventsRef}
+	return RenderOptions{EventsURL: eventsRef, ColorModeCookie: h.colorModeCookie}
 }
 
+// stampColorMode is the page with a forced mode written onto its opening tag.
+func stampColorMode(page []byte, mode string) []byte {
+	return bytes.Replace(page, []byte(htmlTag), []byte(colorModeTag(mode)), 1)
+}
+
+// handlePage answers with the cached page, in the mode the request names when
+// the handler was given a ColorMode. The page varies by request then, and it is
+// never stored either way, so the back button does not bring back a page in the
+// mode it was first served in.
 func (h *DeckHandler) handlePage(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	page := h.page
+	light := h.pageLight
+	dark := h.pageDark
 	h.mu.RUnlock()
+
+	if h.colorMode != nil {
+		switch h.colorMode(r) {
+		case colorModeLight:
+			page = light
+		case colorModeDark:
+			page = dark
+		}
+	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
