@@ -13,11 +13,16 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Errors returned by LoadDeck, which are the two failures that leave no deck to
-// hold problems against. Everything else the loader meets is a Problem.
+// Errors returned by LoadDeck and LoadDeckFS, which are the failures that leave
+// no deck to hold problems against. Everything else the loader meets is a
+// Problem.
 var (
 	ErrOpenDeck       = errors.New("cannot open deck directory")
 	ErrNoPresentation = errors.New("cannot read presentation.yaml")
+	// ErrReadPresentation is a presentation file that is there and will not open.
+	// It is not ErrNoPresentation, so a caller shows a deck that has a problem
+	// rather than treating the directory as holding no deck.
+	ErrReadPresentation = errors.New("cannot read the presentation")
 )
 
 const (
@@ -59,7 +64,8 @@ var (
 // Deck is one loaded deck directory: the talk, its slides in order, and the
 // problems found reading them.
 type Deck struct {
-	// Dir is the deck directory as it was given to LoadDeck.
+	// Dir is the deck directory as it was given to LoadDeck. It is empty on a deck
+	// read by LoadDeckFS, which has no directory to name.
 	Dir string `json:"dir"`
 	// Source is the file the presentation was read from: presentation.yaml for a
 	// deck of one file per slide, presentation.md for a deck in one file. It is
@@ -72,6 +78,7 @@ type Deck struct {
 	Problems []Problem `json:"problems,omitempty"`
 
 	root *os.Root
+	fsys fs.FS
 }
 
 // presentationPath is the file a problem against the presentation names. A Deck
@@ -85,16 +92,24 @@ func (d *Deck) presentationPath() string {
 	return d.Source
 }
 
-// Root is the open deck directory. Every asset a slide or a theme template
-// names is read through it, so a path that leaves the deck is refused rather
-// than served, which is the rule the board applies to its own root.
+// Root is the open deck directory, which is what FS reads through on a deck from
+// LoadDeck or DecodeDeck, so a path that leaves the deck is refused rather than
+// served, which is the rule the board applies to its own root. It is nil on a
+// deck read by LoadDeckFS.
 func (d *Deck) Root() *os.Root {
 	return d.root
 }
 
+// FS is what the deck's files are read through: every asset a slide or a theme
+// template names. A Deck built in memory holds none and this is nil.
+func (d *Deck) FS() fs.FS {
+	return d.fsys
+}
+
 // Close releases the deck directory. A caller that reads assets holds the deck
-// until it is done with them. A Deck that did not come from LoadDeck holds no
-// root and closes without complaint.
+// until it is done with them. A Deck that did not open a directory, which is one
+// from LoadDeckFS or one built in memory, holds no root and closes without
+// complaint.
 func (d *Deck) Close() error {
 	if d.root == nil {
 		return nil
@@ -113,24 +128,50 @@ func (d *Deck) Close() error {
 // that way, since that file is the whole deck.
 //
 // It returns an error only for what stops a deck existing: a directory it cannot
-// open, and neither presentation file. A slide that will not parse, a missing
-// page_style, two slides on one number and an unknown key in the presentation
-// are Problems on the returned deck, and what to do about one is the caller's:
-// render refuses to write a file, serve logs it and serves the rest, and the
-// board counts it.
+// open, a presentation file that will not open, and neither of them. A
+// slide that will not parse, a missing page_style, two slides on one number and
+// an unknown key in the presentation are Problems on the returned deck, and what
+// to do about one is the caller's: render refuses to write a file, serve logs it
+// and serves the rest, and the board counts it.
 func LoadDeck(dir string) (*Deck, error) {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrOpenDeck, err)
 	}
 
-	rootFS := root.FS()
+	deck, err := readDeck(root.FS())
+	if err != nil {
+		root.Close()
 
-	single, err := fs.ReadFile(rootFS, presentationMarkdownFile)
+		return nil, err
+	}
+
+	deck.Dir = dir
+	deck.root = root
+
+	return deck, nil
+}
+
+// LoadDeckFS reads the deck at the top of fsys, as LoadDeck reads one in a
+// directory, for a deck held somewhere with no path to open. The deck reads its
+// assets through fsys, so what a read may reach is up to fsys: nothing here
+// confines it the way LoadDeck's root does. Dir is empty, Root is nil and Close
+// does nothing, since the file system stays the caller's.
+//
+// Such a deck has no directory to find a theme in, so its theme is loaded with
+// LoadNamedTheme, and a theme naming a path is a problem for the caller to report.
+func LoadDeckFS(fsys fs.FS) (*Deck, error) {
+	return readDeck(fsys)
+}
+
+// readDeck reads whichever form of deck fsys holds, which is the whole of a load
+// once there is a file system to read.
+func readDeck(fsys fs.FS) (*Deck, error) {
+	single, err := fs.ReadFile(fsys, presentationMarkdownFile)
 	if err == nil {
-		deck := &Deck{Dir: dir, Source: presentationMarkdownFile, Slides: []*Slide{}, root: root}
+		deck := &Deck{Source: presentationMarkdownFile, Slides: []*Slide{}, fsys: fsys}
 
-		deck.loadMarkdownDeck(rootFS, single)
+		deck.loadMarkdownDeck(fsys, single)
 
 		return deck, nil
 	}
@@ -139,22 +180,21 @@ func LoadDeck(dir string) (*Deck, error) {
 	// meant, so it is the failure rather than the reason to go looking for the
 	// other form.
 	if !errors.Is(err, fs.ErrNotExist) {
-		root.Close()
-
-		return nil, fmt.Errorf("%w: %w", ErrNoPresentation, err)
+		return nil, fmt.Errorf("%w: %w", ErrReadPresentation, err)
 	}
 
-	data, err := fs.ReadFile(rootFS, presentationFile)
+	data, err := fs.ReadFile(fsys, presentationFile)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: %w", ErrNoPresentation, err)
+	}
 	if err != nil {
-		root.Close()
-
-		return nil, fmt.Errorf("%w: %w", ErrNoPresentation, err)
+		return nil, fmt.Errorf("%w: %w", ErrReadPresentation, err)
 	}
 
-	deck := &Deck{Dir: dir, Source: presentationFile, Slides: []*Slide{}, root: root}
+	deck := &Deck{Source: presentationFile, Slides: []*Slide{}, fsys: fsys}
 
 	deck.loadPresentation(data)
-	deck.loadSlides(rootFS)
+	deck.loadSlides(fsys)
 
 	return deck, nil
 }
@@ -166,9 +206,11 @@ func LoadDeck(dir string) (*Deck, error) {
 //
 // The deck takes root: Close releases it, as it does for a deck LoadDeck opened.
 func DecodeDeck(dir string, root *os.Root, data []byte) *Deck {
-	deck := &Deck{Dir: dir, Source: presentationMarkdownFile, Slides: []*Slide{}, root: root}
+	rootFS := root.FS()
 
-	deck.loadMarkdownDeck(root.FS(), data)
+	deck := &Deck{Dir: dir, Source: presentationMarkdownFile, Slides: []*Slide{}, root: root, fsys: rootFS}
+
+	deck.loadMarkdownDeck(rootFS, data)
 
 	return deck
 }
@@ -179,7 +221,7 @@ func DecodeDeck(dir string, root *os.Root, data []byte) *Deck {
 func (d *Deck) loadMarkdownDeck(rootFS fs.FS, data []byte) {
 	_, err := fs.Stat(rootFS, presentationFile)
 	if err == nil {
-		d.report(presentationMarkdownFile, fmt.Sprintf("%s is beside it and is not being read: a deck is written one way or the other", presentationFile))
+		d.report(presentationMarkdownFile, fmt.Sprintf("%s beside it is not read", presentationFile))
 	}
 
 	front, body, err := splitFrontmatter(data)
@@ -519,12 +561,12 @@ func (d *Deck) loadSlide(rootFS fs.FS, name string) *Slide {
 
 	data, err := fs.ReadFile(rootFS, name)
 	if err != nil {
-		// A file that will not open cannot say whether it is a slide, so an
-		// ordinary read failure is reported only when the name already claims to
-		// be one. A path that leaves the deck is reported either way: it is the
-		// refusal the deck root exists for, and staying quiet about it because the
-		// file was named notes.md would hide it.
-		if numbered || escapesDeck(err) {
+		// A file that will not open cannot say whether it is a slide, so every
+		// failure is reported: a refusal of a file named notes.md, by the deck root
+		// or by the store behind it, would otherwise pass over a slide unseen. A
+		// file that is not there holds nothing to lose, and matters only when its
+		// name already claims to be a slide.
+		if numbered || !errors.Is(err, fs.ErrNotExist) {
 			d.report(name, readMessage(err))
 		}
 

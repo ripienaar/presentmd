@@ -373,6 +373,10 @@ A `theme` holding a path separator is a directory rather than a name:
 `./deck-theme` beside the deck, or an absolute path. A directory theme is
 watched along with the deck, so editing its CSS reloads the browser.
 
+A deck read from a store with no disk takes named themes only, through
+`present.LoadNamedTheme`, described under
+[Loading a deck from Go](#loading-a-deck-from-go).
+
 A theme is a directory of:
 
 - `theme.yaml` — `code_style`, the chroma style fenced code is highlighted with;
@@ -470,6 +474,47 @@ not blank the slide you are standing in front of.
 The editor's preview rides the same stream: a keystroke that settles is rendered
 and the frame under the editor follows it, without anything being written to
 disk.
+
+## Loading a deck from Go
+
+The `present` package loads a deck from a directory or from any `fs.FS`:
+
+```go
+deck, err := present.LoadDeck("talks/my-talk")
+
+deck, err := present.LoadDeckFS(fsys)
+```
+
+Both read either form of deck and return the same `Deck`, and everything that
+reads a deck's files goes through `deck.FS()`, so a deck from a store with no
+disk renders and serves its assets as one from a directory does.
+
+`LoadDeck` opens the directory with `os.OpenRoot`, so a path that leaves the deck
+is refused. `LoadDeckFS` reads through what it was handed, so what a read may
+reach is up to that file system. On such a deck `deck.Dir` is empty,
+`deck.Root()` is nil and `deck.Close()` does nothing.
+
+A deck from `LoadDeckFS` has no directory to find a theme in, so its theme is
+loaded by name:
+
+```go
+theme, err := present.LoadNamedTheme(deck.Presentation.Theme)
+```
+
+`LoadNamedTheme` looks among the themes given to `RegisterTheme` and then the
+embedded ones, and takes no directory. A theme holding a path separator returns
+`ErrNotNamedTheme` and a name it does not know returns `ErrUnknownTheme`, and
+either is the caller's to report as a problem on the deck.
+
+`LoadTheme(name, dir)` stays the way to load a theme for a local deck, any path
+included. Given an empty `dir` it refuses a relative path with `ErrOpenTheme`
+rather than reading the working directory.
+
+A load returns an error when there is no deck to hold a problem against:
+`ErrNoPresentation` for a directory holding neither presentation file, and
+`ErrReadPresentation` for a presentation file that is there and will not open.
+`LoadDeck` also returns `ErrOpenDeck` for a directory it cannot open. Everything
+else is on `deck.Problems`.
 
 ## License
 

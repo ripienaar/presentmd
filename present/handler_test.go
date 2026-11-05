@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -189,6 +190,94 @@ func TestHandlerServesADeckAsset(t *testing.T) {
 		if response.Body.String() != "not really a png" {
 			t.Errorf("%s answered %q", path, response.Body.String())
 		}
+	}
+}
+
+// TestHandlerServesADeckFromAFileSystem renders a deck with no directory behind
+// it and answers its image, in both forms a deck is written. A file no slide
+// names stays refused, as it does for a deck on disk.
+func TestHandlerServesADeckFromAFileSystem(t *testing.T) {
+	const image = "<img src=\"images/one.png\">\n"
+
+	cases := map[string]fstest.MapFS{
+		"one file": {
+			presentationMarkdownFile: mapFile("---\ntitle: A Deck\ntheme: default\n---\n\n+++\npage_style: content\n+++\n\n# The Image\n\n" + image),
+		},
+		"a file per slide": {
+			presentationFile: mapFile("title: A Deck\ntheme: default\n"),
+			"01-image.md":    mapFile("---\npage_style: content\n---\n\n# The Image\n\n" + image),
+		},
+	}
+
+	for name, fsys := range cases {
+		t.Run(name, func(t *testing.T) {
+			fsys["images/one.png"] = mapFile("not really a png")
+			fsys["unlisted.png"] = mapFile("a file no slide names")
+
+			deck, err := LoadDeckFS(fsys)
+			if err != nil {
+				t.Fatalf("the deck did not load: %v", err)
+			}
+
+			handler, err := Handler(deck, loadDefaultTheme(t), HandlerOptions{Log: handlerLogger()})
+			if err != nil {
+				t.Fatalf("the handler was not built: %v", err)
+			}
+
+			t.Cleanup(func() { handler.Close() })
+
+			if len(handler.Problems()) != 0 {
+				t.Errorf("problems %v", handler.Problems())
+			}
+
+			page := get(t, handler, "/")
+			if page.Code != http.StatusOK {
+				t.Fatalf("the page answered %d, want 200", page.Code)
+			}
+
+			if !strings.Contains(page.Body.String(), "The Image") {
+				t.Error("the page does not hold the slide")
+			}
+
+			asset := get(t, handler, "/assets/images/one.png")
+			if asset.Code != http.StatusOK {
+				t.Fatalf("the image answered %d, want 200", asset.Code)
+			}
+
+			if asset.Body.String() != "not really a png" {
+				t.Errorf("the image answered %q", asset.Body.String())
+			}
+
+			if get(t, handler, "/assets/unlisted.png").Code != http.StatusNotFound {
+				t.Error("a file no slide names was served")
+			}
+		})
+	}
+}
+
+// TestHandlerAnswersNoAssetForADeckInMemory asks for an image a deck built by
+// hand names. The render lists it and there is nothing to read it from, so the
+// answer is a 404 rather than a read through a file system the deck does not
+// hold.
+func TestHandlerAnswersNoAssetForADeckInMemory(t *testing.T) {
+	deck := &Deck{
+		Presentation: Presentation{Title: "A Deck", Theme: "default", Width: 1280, Height: 720},
+		Slides:       []*Slide{{Number: 1, Path: "01.md", PageStyle: "content", Markdown: "<img src=\"images/one.png\">\n"}},
+	}
+
+	handler, err := Handler(deck, loadDefaultTheme(t), HandlerOptions{Log: handlerLogger()})
+	if err != nil {
+		t.Fatalf("the handler was not built: %v", err)
+	}
+
+	t.Cleanup(func() { handler.Close() })
+
+	if len(handler.assets) != 1 {
+		t.Fatalf("assets %v, want the image listed", handler.assets)
+	}
+
+	if get(t, handler, "/assets/images/one.png").Code != http.StatusNotFound {
+		t.Error("an image with nothing to read it from was answered")
 	}
 }
 

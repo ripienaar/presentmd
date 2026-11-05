@@ -173,6 +173,122 @@ func TestLoadThemeMissingDirectory(t *testing.T) {
 	}
 }
 
+// TestLoadThemeRelativeWithoutDeckDir pins what an empty deckDir means: a deck
+// with no directory has nothing to resolve a relative path against, and the
+// working directory does not take its place. The working directory holds a theme
+// by that name, so a load that fell through to it would succeed.
+func TestLoadThemeRelativeWithoutDeckDir(t *testing.T) {
+	dir := writeTheme(t, map[string]string{
+		"theme.yaml":         "code_style: bw\n",
+		"styles/content.jet": "<h2>{{ raw: heading }}</h2>\n",
+	})
+
+	t.Chdir(filepath.Dir(dir))
+
+	name := "./" + filepath.Base(dir)
+
+	_, err := LoadTheme(name, ".")
+	if err != nil {
+		t.Fatalf("cannot load the theme from the working directory by naming it: %v", err)
+	}
+
+	theme, err := LoadTheme(name, "")
+	if !errors.Is(err, ErrOpenTheme) {
+		t.Fatalf("error was %v, want ErrOpenTheme", err)
+	}
+
+	if theme != nil {
+		t.Errorf("theme %q from %q, want nothing read", theme.Name, theme.Dir)
+	}
+}
+
+// TestLoadThemeAbsoluteWithoutDeckDir pins the other side of that refusal: an
+// absolute path resolves against nothing, so an empty deckDir changes nothing.
+func TestLoadThemeAbsoluteWithoutDeckDir(t *testing.T) {
+	dir := writeTheme(t, map[string]string{
+		"theme.yaml":         "code_style: bw\n",
+		"styles/content.jet": "<h2>{{ raw: heading }}</h2>\n",
+	})
+
+	theme, err := LoadTheme(dir, "")
+	if err != nil {
+		t.Fatalf("cannot load a theme by absolute path with no deck directory: %v", err)
+	}
+
+	if theme.Dir != dir {
+		t.Errorf("dir %q, want %q", theme.Dir, dir)
+	}
+}
+
+// TestLoadNamedThemeEmbedded pins that a theme in the binary resolves with no
+// directory, and names none once loaded.
+func TestLoadNamedThemeEmbedded(t *testing.T) {
+	theme, err := LoadNamedTheme("default")
+	if err != nil {
+		t.Fatalf("cannot load the embedded theme by name: %v", err)
+	}
+
+	if theme.Name != "default" || theme.Dir != "" {
+		t.Errorf("name %q dir %q, want the embedded theme to name no directory", theme.Name, theme.Dir)
+	}
+}
+
+// TestLoadNamedThemeRegistered pins that a theme a program registered resolves
+// the way an embedded one does.
+func TestLoadNamedThemeRegistered(t *testing.T) {
+	err := register(t, "board", registeredFiles())
+	if err != nil {
+		t.Fatalf("cannot register a theme: %v", err)
+	}
+
+	theme, err := LoadNamedTheme("board")
+	if err != nil {
+		t.Fatalf("cannot load the registered theme by name: %v", err)
+	}
+
+	if theme.Name != "board" || theme.Dir != "" {
+		t.Errorf("name %q dir %q, want a registered theme to name no directory", theme.Name, theme.Dir)
+	}
+
+	if !theme.HasStyle("content") {
+		t.Errorf("styles %v, want content", theme.Styles())
+	}
+}
+
+// TestLoadNamedThemeUnknownName pins that a name neither set holds is the error
+// LoadTheme gives for one, listing the themes that do exist.
+func TestLoadNamedThemeUnknownName(t *testing.T) {
+	_, err := LoadNamedTheme("fancy")
+	if !errors.Is(err, ErrUnknownTheme) {
+		t.Fatalf("error was %v, want ErrUnknownTheme", err)
+	}
+
+	if !strings.Contains(err.Error(), "default") {
+		t.Errorf("error %q does not name the embedded themes", err)
+	}
+}
+
+// TestLoadNamedThemeRefusesAPath pins the refusal with paths that hold a real
+// theme, relative to the working directory and absolute, so a lookup that reached
+// the disk would load one rather than fail on a missing directory.
+func TestLoadNamedThemeRefusesAPath(t *testing.T) {
+	absolute, err := filepath.Abs("testdata/theme-fixture")
+	if err != nil {
+		t.Fatalf("cannot make the fixture path absolute: %v", err)
+	}
+
+	for _, name := range []string{"testdata/theme-fixture", "./testdata/theme-fixture", absolute} {
+		theme, err := LoadNamedTheme(name)
+		if !errors.Is(err, ErrNotNamedTheme) {
+			t.Fatalf("%s: error was %v, want ErrNotNamedTheme", name, err)
+		}
+
+		if theme != nil {
+			t.Errorf("%s: theme %q, want nothing read", name, theme.Name)
+		}
+	}
+}
+
 // TestPartialIsNotAPageStyle pins the underscore rule from both sides: the
 // partial is not a style a slide can name, and the style that includes it still
 // gets its output.

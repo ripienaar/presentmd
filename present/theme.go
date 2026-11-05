@@ -19,11 +19,13 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-// Errors returned by LoadTheme and Render. A theme either loads whole or not at
-// all: unlike a deck, which holds problems against the files that carry them,
-// there is nothing left to present when the theme is missing or broken.
+// Errors returned by LoadTheme, LoadNamedTheme and Render. A theme either loads
+// whole or not at all: unlike a deck, which holds problems against the files that
+// carry them, there is nothing left to present when the theme is missing or
+// broken.
 var (
 	ErrUnknownTheme  = errors.New("unknown theme")
+	ErrNotNamedTheme = errors.New("theme must be a named one")
 	ErrOpenTheme     = errors.New("cannot open theme directory")
 	ErrThemeConfig   = errors.New("cannot read theme.yaml")
 	ErrThemeStyles   = errors.New("cannot read theme styles")
@@ -128,6 +130,10 @@ type Theme struct {
 // the binary or in one directory a person points at, and copying an embedded
 // theme out of the source tree is how one starts.
 //
+// An empty deckDir is no directory at all, which is what a deck from LoadDeckFS
+// holds, so a relative path is refused there rather than read from wherever the
+// process runs. A caller with no directory wants LoadNamedTheme.
+//
 // A directory theme may sit anywhere the process can read, including outside the
 // deck and outside the planning root, and LoadTheme does not confine it. That is
 // the point of the form: the user names the directory, and two decks sharing one
@@ -138,6 +144,24 @@ func LoadTheme(name string, deckDir string) (*Theme, error) {
 		return loadDirectoryTheme(name, deckDir)
 	}
 
+	return namedTheme(name)
+}
+
+// LoadNamedTheme loads a registered or embedded theme by name, for a deck held
+// somewhere with no directory. It takes no directory, so nothing it is handed can
+// reach the disk: a name holding a path separator is ErrNotNamedTheme, which the
+// caller reports as a problem on the deck.
+func LoadNamedTheme(name string) (*Theme, error) {
+	if IsDirectoryTheme(name) {
+		return nil, fmt.Errorf("%w: %q", ErrNotNamedTheme, name)
+	}
+
+	return namedTheme(name)
+}
+
+// namedTheme resolves a name among the registered themes and then the embedded
+// set, which is the half of a load that needs no directory.
+func namedTheme(name string) (*Theme, error) {
 	fsys, registered := registeredTheme(name)
 	if registered {
 		return newTheme(name, "", fsys)
@@ -247,6 +271,12 @@ func IsDirectoryTheme(name string) bool {
 func loadDirectoryTheme(name string, deckDir string) (*Theme, error) {
 	dir := filepath.FromSlash(name)
 	if !filepath.IsAbs(dir) {
+		// filepath.Join drops an empty element, so this would otherwise be a path
+		// under the working directory.
+		if deckDir == "" {
+			return nil, fmt.Errorf("%w: %s is relative and there is no deck directory", ErrOpenTheme, name)
+		}
+
 		dir = filepath.Join(deckDir, dir)
 	}
 

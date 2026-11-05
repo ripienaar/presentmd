@@ -2,10 +2,12 @@ package present
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 // TestLoadDeck covers a deck that loads cleanly: presentation.yaml in full, the
@@ -698,7 +700,7 @@ func TestLoadMarkdownDeckWins(t *testing.T) {
 		t.Errorf("title %q, want the one presentation.md holds", deck.Presentation.Title)
 	}
 
-	if !hasProblem(deck.Problems, presentationMarkdownFile, "presentation.yaml is beside it") {
+	if !hasProblem(deck.Problems, presentationMarkdownFile, "presentation.yaml beside it is not read") {
 		t.Errorf("no problem naming the file that is not being read, got:\n%s", formatProblems(deck.Problems))
 	}
 
@@ -728,5 +730,317 @@ func TestPresentationPathWithoutSource(t *testing.T) {
 
 	if deck.presentationPath() != presentationFile {
 		t.Errorf("presentation path %q, want %s", deck.presentationPath(), presentationFile)
+	}
+}
+
+// refusingFS answers every read of the named file with a refusal, which is what
+// a store with rules of its own does to a file it holds and will not hand over.
+type refusingFS struct {
+	fs.FS
+	refused string
+}
+
+func (r refusingFS) Open(name string) (fs.File, error) {
+	if name == r.refused {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrPermission}
+	}
+
+	return r.FS.Open(name)
+}
+
+// mapFile is a file of a fstest.MapFS holding text.
+func mapFile(text string) *fstest.MapFile {
+	return &fstest.MapFile{Data: []byte(text)}
+}
+
+// TestLoadDeckFS reads both forms of deck out of a file system with no disk
+// behind it, and pins what such a deck does not have.
+func TestLoadDeckFS(t *testing.T) {
+	cases := []struct {
+		name   string
+		fsys   fstest.MapFS
+		source string
+		slides []string
+	}{
+		{
+			name: "one file",
+			fsys: fstest.MapFS{
+				presentationMarkdownFile: mapFile("---\ntitle: A Talk\ntheme: default\n---\n\n+++\npage_style: title\n+++\n\n# One\n\n+++\npage_style: content\n+++\n\n# Two\n"),
+			},
+			source: presentationMarkdownFile,
+			slides: []string{"presentation.md:6", "presentation.md:12"},
+		},
+		{
+			name: "a file per slide",
+			fsys: fstest.MapFS{
+				presentationFile: mapFile("title: A Talk\ntheme: default\n"),
+				"02-two.md":      mapFile("---\npage_style: content\n---\n\n# Two\n"),
+				"01-one.md":      mapFile("---\npage_style: title\n---\n\n# One\n"),
+				"README.md":      mapFile("Not a slide.\n"),
+			},
+			source: presentationFile,
+			slides: []string{"01-one.md", "02-two.md"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			deck, err := LoadDeckFS(tc.fsys)
+			if err != nil {
+				t.Fatalf("load: %v", err)
+			}
+
+			if len(deck.Problems) != 0 {
+				t.Errorf("problems:\n%s", formatProblems(deck.Problems))
+			}
+
+			if deck.Source != tc.source {
+				t.Errorf("source %q, want %s", deck.Source, tc.source)
+			}
+
+			if deck.Presentation.Title != "A Talk" {
+				t.Errorf("title %q", deck.Presentation.Title)
+			}
+
+			if len(deck.Slides) != len(tc.slides) {
+				t.Fatalf("loaded %d slides, want %d:\n%s", len(deck.Slides), len(tc.slides), formatSlides(deck.Slides))
+			}
+
+			for i, want := range tc.slides {
+				if deck.Slides[i].Path != want {
+					t.Errorf("slide %d is %q, want %q", i, deck.Slides[i].Path, want)
+				}
+			}
+
+			if deck.Dir != "" {
+				t.Errorf("dir %q, want none", deck.Dir)
+			}
+
+			if deck.Root() != nil {
+				t.Error("a deck read from a file system holds a root")
+			}
+
+			if deck.FS() == nil {
+				t.Fatal("the deck holds no file system: assets are read through it")
+			}
+
+			_, err = fs.Stat(deck.FS(), tc.source)
+			if err != nil {
+				t.Errorf("the deck's file system does not hold %s: %v", tc.source, err)
+			}
+
+			err = deck.Close()
+			if err != nil {
+				t.Errorf("closing returned %v", err)
+			}
+
+			_, err = fs.Stat(deck.FS(), tc.source)
+			if err != nil {
+				t.Errorf("closing the deck took its file system away: %v", err)
+			}
+		})
+	}
+}
+
+// TestLoadDeckFSNoPresentation covers a file system holding neither form.
+func TestLoadDeckFSNoPresentation(t *testing.T) {
+	deck, err := LoadDeckFS(fstest.MapFS{"notes.txt": mapFile("Not a deck.\n")})
+	if !errors.Is(err, ErrNoPresentation) {
+		t.Errorf("a file system with neither file returned %v, want ErrNoPresentation", err)
+	}
+
+	if errors.Is(err, ErrReadPresentation) {
+		t.Errorf("a file system with neither file returned %v, which says one is there", err)
+	}
+
+	if deck != nil {
+		t.Error("a deck came back alongside the error")
+	}
+}
+
+// TestLoadDeckFSRefusedPresentation covers a presentation.md a store holds and
+// will not open: the deck is there, so the failure says so, and the other form
+// beside it is not read in its place.
+func TestLoadDeckFSRefusedPresentation(t *testing.T) {
+	fsys := refusingFS{
+		FS: fstest.MapFS{
+			presentationMarkdownFile: mapFile("---\ntitle: A Talk\ntheme: default\n---\n"),
+			presentationFile:         mapFile("title: The Pair\ntheme: default\n"),
+		},
+		refused: presentationMarkdownFile,
+	}
+
+	deck, err := LoadDeckFS(fsys)
+	if !errors.Is(err, ErrReadPresentation) {
+		t.Errorf("a refused presentation.md returned %v, want ErrReadPresentation", err)
+	}
+
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("the refusal was lost from %v", err)
+	}
+
+	if errors.Is(err, ErrNoPresentation) {
+		t.Errorf("a refused presentation.md returned %v, which reads as no deck", err)
+	}
+
+	if deck != nil {
+		t.Error("a deck came back alongside the error")
+	}
+}
+
+// TestLoadDeckFSRefusedPresentationYaml covers the same refusal of the other
+// form, which is a deck there as well.
+func TestLoadDeckFSRefusedPresentationYaml(t *testing.T) {
+	fsys := refusingFS{
+		FS:      fstest.MapFS{presentationFile: mapFile("title: The Pair\ntheme: default\n")},
+		refused: presentationFile,
+	}
+
+	deck, err := LoadDeckFS(fsys)
+	if !errors.Is(err, ErrReadPresentation) {
+		t.Errorf("a refused presentation.yaml returned %v, want ErrReadPresentation", err)
+	}
+
+	if errors.Is(err, ErrNoPresentation) {
+		t.Errorf("a refused presentation.yaml returned %v, which reads as no deck", err)
+	}
+
+	if deck != nil {
+		t.Error("a deck came back alongside the error")
+	}
+}
+
+// TestLoadDeckUnreadablePresentation is the same failure from a directory, where
+// a presentation.md that is a directory will not read.
+func TestLoadDeckUnreadablePresentation(t *testing.T) {
+	dir := t.TempDir()
+
+	err := os.Mkdir(filepath.Join(dir, presentationMarkdownFile), 0o700)
+	if err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	deck, err := LoadDeck(dir)
+	if !errors.Is(err, ErrReadPresentation) {
+		t.Errorf("an unreadable presentation.md returned %v, want ErrReadPresentation", err)
+	}
+
+	if errors.Is(err, ErrNoPresentation) {
+		t.Errorf("an unreadable presentation.md returned %v, which reads as no deck", err)
+	}
+
+	if deck != nil {
+		t.Error("a deck came back alongside the error")
+	}
+}
+
+// TestLoadDeckFSRefusedSlide covers an unnumbered file a store will not hand
+// over, with a refusal that does not carry os.Root's wording. It cannot say
+// whether it is a slide, so it is reported and the rest of the deck loads.
+func TestLoadDeckFSRefusedSlide(t *testing.T) {
+	fsys := refusingFS{
+		FS: fstest.MapFS{
+			presentationFile: mapFile("title: A Talk\ntheme: default\n"),
+			"01-one.md":      mapFile("---\npage_style: title\n---\n\n# One\n"),
+			"notes.md":       mapFile("---\nslide: 2\npage_style: content\n---\n\n# Two\n"),
+		},
+		refused: "notes.md",
+	}
+
+	deck, err := LoadDeckFS(fsys)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	if !hasProblem(deck.Problems, "notes.md", "cannot read file") {
+		t.Errorf("no problem naming the refused file, got:\n%s", formatProblems(deck.Problems))
+	}
+
+	if len(deck.Slides) != 1 || deck.Slides[0].Path != "01-one.md" {
+		t.Errorf("the rest of the deck did not load:\n%s", formatSlides(deck.Slides))
+	}
+}
+
+// TestLoadDeckMissingSlideFile covers a file ReadDir lists and a read does not
+// find, here a link to nothing. Passed over when the name claims nothing, and
+// reported when it claims to be a slide.
+func TestLoadDeckMissingSlideFile(t *testing.T) {
+	dir := t.TempDir()
+
+	writeFile(t, filepath.Join(dir, presentationFile), "title: A Talk\ntheme: default\n")
+
+	for _, name := range []string{"notes.md", "02-gone.md"} {
+		err := os.Symlink("nowhere.md", filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("symlink: %v", err)
+		}
+	}
+
+	deck := load(t, dir)
+
+	if !hasProblem(deck.Problems, "02-gone.md", "cannot read file") {
+		t.Errorf("no problem naming the numbered file, got:\n%s", formatProblems(deck.Problems))
+	}
+
+	if len(deck.Problems) != 1 {
+		t.Errorf("want the numbered file alone, got:\n%s", formatProblems(deck.Problems))
+	}
+}
+
+// TestDeckFSFromADirectory pins that a deck on disk keeps its directory and its
+// root, and reads through that root, whichever way it was loaded.
+func TestDeckFSFromADirectory(t *testing.T) {
+	check := func(t *testing.T, deck *Deck, want string) {
+		t.Helper()
+
+		if deck.Root() == nil {
+			t.Fatal("the deck holds no root")
+		}
+
+		if deck.FS() == nil {
+			t.Fatal("the deck holds no file system: assets are read through it")
+		}
+
+		if deck.Dir != want {
+			t.Errorf("dir %q, want %q", deck.Dir, want)
+		}
+
+		_, err := fs.Stat(deck.FS(), "images/one.png")
+		if err != nil {
+			t.Errorf("the deck's file system does not reach its image: %v", err)
+		}
+
+		_, err = fs.Stat(deck.FS(), "../outside.png")
+		if err == nil {
+			t.Error("a path leaving the deck was reached through its file system")
+		}
+	}
+
+	dir := writeDeck(t)
+
+	t.Run("LoadDeck", func(t *testing.T) {
+		check(t, load(t, dir), dir)
+	})
+
+	t.Run("DecodeDeck", func(t *testing.T) {
+		root, err := os.OpenRoot(dir)
+		if err != nil {
+			t.Fatalf("open root: %v", err)
+		}
+
+		deck := DecodeDeck(dir, root, []byte("---\ntitle: A Talk\ntheme: default\n---\n"))
+		t.Cleanup(func() { deck.Close() })
+
+		check(t, deck, dir)
+	})
+}
+
+// TestDeckFSBuiltInMemory covers a Deck with no file system, which the sites
+// reading a deck's files check for.
+func TestDeckFSBuiltInMemory(t *testing.T) {
+	deck := &Deck{}
+
+	if deck.FS() != nil {
+		t.Error("a deck built in memory holds a file system")
 	}
 }

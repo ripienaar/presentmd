@@ -146,7 +146,7 @@ type RenderedDeck struct {
 	HTML string
 	// Assets are the paths the page names, relative to the deck directory, each
 	// one a file the server has to answer for and the exporter has to inline
-	// through the deck's root.
+	// through the deck.
 	Assets []string
 	// ThemeAssets are the url() targets of the theme's stylesheet, relative to
 	// the theme. They are a list of their own because they are read through the
@@ -268,15 +268,9 @@ func fileDigest(deck *Deck, theme *Theme, assets []string, themeAssets []string)
 		sum.Write(css)
 	}
 
-	// A deck built in memory rather than read from a directory holds no root, and
-	// its assets are digested by name alone.
-	var files fs.FS
-
-	if deck.Root() != nil {
-		files = deck.Root().FS()
-	}
-
-	digestFiles(sum, files, assets)
+	// A deck built in memory rather than loaded holds no file system, and its
+	// assets are digested by name alone.
+	digestFiles(sum, deck.FS(), assets)
 	digestFiles(sum, theme.FS(), themeAssets)
 
 	return hex.EncodeToString(sum.Sum(nil))[:digestLength]
@@ -476,7 +470,7 @@ func renderSlide(md *slideMarkdown, theme *Theme, data TemplateData, slide *Slid
 	if errors.Is(err, ErrSecondBreak) {
 		return "", []Problem{{
 			Path:    slide.Path,
-			Message: fmt.Sprintf("page style %q divides at its first thematic break and the slide holds a second", slide.PageStyle),
+			Message: fmt.Sprintf("second thematic break in a %q slide", slide.PageStyle),
 		}}
 	}
 
