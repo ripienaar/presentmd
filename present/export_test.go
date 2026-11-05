@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 // exportDeck writes a deck of the named files in a temp directory and loads it.
@@ -484,6 +485,29 @@ func TestExportReportsAThemeImport(t *testing.T) {
 
 	if !found {
 		t.Errorf("the import was not reported, problems are %v", problems)
+	}
+}
+
+// TestExportInlinesFromAFileSystem carries an image of a deck with no directory
+// behind it into the page, which goes through the same read a deck on disk does.
+func TestExportInlinesFromAFileSystem(t *testing.T) {
+	deck, err := LoadDeckFS(fstest.MapFS{
+		presentationFile: mapFile("title: A Talk\ntheme: default\n"),
+		"01-image.md":    mapFile("---\npage_style: content\n---\n\n# Image\n\n<img src=\"images/one.png\">\n"),
+		"images/one.png": mapFile("a png"),
+	})
+	if err != nil {
+		t.Fatalf("the deck did not load: %v", err)
+	}
+
+	page, problems := exported(t, deck, loadDefaultTheme(t), exportOptions{})
+
+	if len(problems) != 0 {
+		t.Errorf("problems %v", problems)
+	}
+
+	if !strings.Contains(page, pngURI("a png")) {
+		t.Error("the image was not carried into the page")
 	}
 }
 

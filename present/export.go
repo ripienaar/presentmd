@@ -214,10 +214,10 @@ func inlinePage(rendered *RenderedDeck, deck *Deck, theme *Theme) (string, []Pro
 
 	var problems []Problem
 
-	// A deck built in memory rather than by LoadDeck holds no root, and names no
+	// A deck built in memory rather than loaded holds no file system, and names no
 	// files it could serve either.
-	if deck.Root() != nil && len(rendered.Assets) > 0 {
-		uris, deckProblems := inlineFiles(deck.Root().FS(), rendered.Assets, "")
+	if deck.FS() != nil && len(rendered.Assets) > 0 {
+		uris, deckProblems := inlineFiles(deck.FS(), rendered.Assets, "")
 		problems = append(problems, deckProblems...)
 
 		page = rewriteRefs(page, func(ref string) (string, bool) {

@@ -228,7 +228,7 @@ func TestRenderDeckReportsASecondThematicBreak(t *testing.T) {
 		t.Errorf("the problem is against %q", out.Problems[0].Path)
 	}
 
-	if !strings.Contains(out.Problems[0].Message, "thematic break") {
+	if !strings.Contains(out.Problems[0].Message, "second thematic break") {
 		t.Errorf("the problem reads %q", out.Problems[0].Message)
 	}
 

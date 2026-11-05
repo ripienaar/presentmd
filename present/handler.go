@@ -303,13 +303,13 @@ func (h *DeckHandler) handleTheme(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleAsset answers one file of the deck directory. Two things have to hold
-// for it to be served: the render named it, and the deck root can read it.
+// for it to be served: the render named it, and the deck can read it.
 func (h *DeckHandler) handleAsset(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("path")
 
 	// A reference is listed as the slide wrote it, so ../secret.png in a slide
-	// reaches the list and is refused here. The deck root refuses it again on the
-	// read below, which is the confinement rather than this check.
+	// reaches the list and is refused here. The deck's file system refuses it
+	// again on the read below, which is the confinement rather than this check.
 	if !fs.ValidPath(name) {
 		h.log.Warn("Refused an asset path that leaves the deck", "path", name)
 		http.NotFound(w, r)
@@ -323,23 +323,28 @@ func (h *DeckHandler) handleAsset(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 
 	listed := slices.Contains(h.assets, name)
-	deck := h.deck
 
 	var (
-		data []byte
-		err  error
+		files fs.FS
+		data  []byte
+		err   error
 	)
 
-	if listed && deck != nil {
-		data, err = fs.ReadFile(deck.Root().FS(), name)
+	if h.deck != nil {
+		files = h.deck.FS()
+	}
+
+	if listed && files != nil {
+		data, err = fs.ReadFile(files, name)
 	}
 
 	h.mu.RUnlock()
 
 	// A file the render did not name is not part of the deck, whatever sits at
 	// that path. The draft nobody linked and the notes beside the slides are in
-	// the deck directory and are nobody's to fetch by guessing the name.
-	if !listed || deck == nil {
+	// the deck directory and are nobody's to fetch by guessing the name. A deck
+	// built in memory holds no file system, so it has no file to answer with.
+	if !listed || files == nil {
 		h.log.Debug("Refused an asset the deck does not name", "path", name)
 		http.NotFound(w, r)
 
