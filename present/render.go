@@ -144,6 +144,14 @@ type RenderOptions struct {
 // what went wrong rendering it.
 type RenderedDeck struct {
 	HTML string
+	// head, sections and tail are HTML in the three parts the page template
+	// writes: everything before the slides, the slides, and everything after
+	// them. The deck handler writes a nonce into the scripts of the head and the
+	// tail, which are presentmd's own, and never into the sections, which carry
+	// whatever HTML a slide wrote.
+	head     string
+	sections string
+	tail     string
 	// Assets are the paths the page names, relative to the deck directory, each
 	// one a file the server has to answer for and the exporter has to inline
 	// through the deck.
@@ -240,12 +248,15 @@ func RenderDeck(deck *Deck, theme *Theme, opts RenderOptions) (*RenderedDeck, er
 		files = fileDigest(deck, theme, out.Assets, out.ThemeAssets)
 	}
 
-	page, err := renderPage(show, theme, prefixAssets(sections.String()), stylesheet, move, files, opts)
+	head, tail, err := renderPage(show, theme, stylesheet, move, files, opts)
 	if err != nil {
 		return nil, err
 	}
 
-	out.HTML = page
+	out.head = head
+	out.sections = prefixAssets(sections.String())
+	out.tail = tail
+	out.HTML = head + out.sections + tail
 
 	return out, nil
 }
@@ -650,7 +661,6 @@ type pageData struct {
 	NotesJS         string
 	Fonts           []fontProperty
 	Chroma          string
-	Sections        string
 	Width           int
 	Height          int
 	Transition      string
@@ -739,8 +749,16 @@ const baseCSS = `
 // speaker view is what a slide's notes are for. Every rendering carries the
 // escape script, which does nothing until the page finds itself in a frame, so
 // an export and a deck under present serve are the same file the board serves.
-// The color mode script is in the head so a forced mode is on the root before
-// anything is drawn.
+// The color mode script is first in the head so a forced mode is on the root
+// before anything is drawn.
+//
+// Every script the page carries is in the head, ahead of the slides, and the
+// body holds nothing after them. A slide is raw HTML, and one ending in an
+// attribute it never closes takes the text after it up to the next matching
+// quote as that attribute's value, which with a script behind the slides would
+// carry that script's nonce into the slide. Reveal and the notes plugin load
+// deferred, and the scripts that need them, or the slides, run on
+// DOMContentLoaded, which a deferred script always runs ahead of.
 const pageTemplate = `<!doctype html>
 {{ .HTMLTag }}
 <head>
@@ -844,26 +862,22 @@ const pageTemplate = `<!doctype html>
 <link rel="stylesheet" href="{{ .ThemeCSS }}">
 <style>
 {{ .Chroma }}</style>
-</head>
-<body>
-<div class="reveal">
-<div class="slides">
-{{ .Sections }}</div>
-</div>
-<script src="{{ .RevealJS }}"></script>
-<script src="{{ .NotesJS }}"></script>
+<script defer src="{{ .RevealJS }}"></script>
+<script defer src="{{ .NotesJS }}"></script>
 <script>
-Reveal.initialize({
-  hash: true,
-  width: {{ .Width }},
-  height: {{ .Height }},
-  transition: "{{ .Transition }}",
-  transitionSpeed: "{{ .TransitionSpeed }}",
-  plugins: [RevealNotes]
+document.addEventListener("DOMContentLoaded", function () {
+  Reveal.initialize({
+    hash: true,
+    width: {{ .Width }},
+    height: {{ .Height }},
+    transition: "{{ .Transition }}",
+    transitionSpeed: "{{ .TransitionSpeed }}",
+    plugins: [RevealNotes]
+  });
 });
 </script>
 <script>
-(function () {
+document.addEventListener("DOMContentLoaded", function () {
   // A deck at the top of a tab keeps every key to itself. Only a deck the board
   // put in a frame answers to the page around it.
   if (window.top === window.self) {
@@ -924,11 +938,11 @@ Reveal.initialize({
     // framed by another site posts to nobody.
     window.parent.postMessage({ planboard: "deck", action: "close" }, window.location.origin);
   }, true);
-})();
+});
 </script>
 {{- if .EventsURL }}
 <script>
-(function () {
+document.addEventListener("DOMContentLoaded", function () {
   var reload = function () { location.reload(); };
 
   var shellOf = function (doc) {
@@ -1096,16 +1110,39 @@ Reveal.initialize({
   // board names its change event, and an EventSource hands a named event only
   // to a listener registered for that name.
   events.addEventListener("change", update);
-})();
+});
 </script>
 {{- end }}
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+{{ .Sections }}</div>
+</div>
 </body>
 </html>
 `
 
-var page = template.Must(template.New("page").Parse(pageTemplate))
+// sectionsAction is where pageTemplate places the slides. The template is parsed
+// as the two halves either side of it, so a render hands back the head and the
+// tail as they were written rather than found again by searching a page whose
+// slides can hold any text.
+const sectionsAction = "{{ .Sections }}"
 
-func renderPage(show *Presentation, theme *Theme, sections string, stylesheet string, move deckTransition, files string, opts RenderOptions) (string, error) {
+var pageHead, pageTail = splitPageTemplate()
+
+func splitPageTemplate() (*template.Template, *template.Template) {
+	head, tail, ok := strings.Cut(pageTemplate, sectionsAction)
+	if !ok || strings.Contains(tail, sectionsAction) {
+		panic("the page template does not place the sections exactly once")
+	}
+
+	return template.Must(template.New("head").Parse(head)), template.Must(template.New("tail").Parse(tail))
+}
+
+// renderPage executes the page template around the sections, answering with the
+// head and the tail the slides sit between.
+func renderPage(show *Presentation, theme *Theme, stylesheet string, move deckTransition, files string, opts RenderOptions) (string, string, error) {
 	data := pageData{
 		HTMLTag:         colorModeTag(opts.ColorMode),
 		ColorModeCookie: jsString(cookieName(opts.ColorModeCookie)),
@@ -1117,7 +1154,6 @@ func renderPage(show *Presentation, theme *Theme, sections string, stylesheet st
 		NotesJS:         opts.assetRef(revealPrefix, revealNotesPlug),
 		Fonts:           fontProperties(theme.Config.Fonts),
 		Chroma:          stylesheet,
-		Sections:        sections,
 		Width:           show.Width,
 		Height:          show.Height,
 		Transition:      jsString(move.name),
@@ -1129,14 +1165,19 @@ func renderPage(show *Presentation, theme *Theme, sections string, stylesheet st
 		data.Shell = shellDigest(data, files)
 	}
 
-	var out bytes.Buffer
+	var head, tail bytes.Buffer
 
-	err := page.Execute(&out, data)
+	err := pageHead.Execute(&head, data)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrRenderPage, err)
+		return "", "", fmt.Errorf("%w: %w", ErrRenderPage, err)
 	}
 
-	return out.String(), nil
+	err = pageTail.Execute(&tail, data)
+	if err != nil {
+		return "", "", fmt.Errorf("%w: %w", ErrRenderPage, err)
+	}
+
+	return head.String(), tail.String(), nil
 }
 
 // colorModeTag is the page's opening tag in a mode. Light and dark are written

@@ -2,7 +2,9 @@ package present
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -793,5 +795,245 @@ func TestHandlerWithoutAColorModeServesThePageAsRendered(t *testing.T) {
 
 	if !strings.Contains(body, `var cookie = "";`) {
 		t.Error("a handler naming no cookie serves a page that writes one")
+	}
+}
+
+// nonceFromQuery and modeFromQuery answer a request's n and m parameters.
+func nonceFromQuery(r *http.Request) string { return r.URL.Query().Get("n") }
+
+func modeFromQuery(r *http.Request) string { return r.URL.Query().Get("m") }
+
+// nonceHandler is a handler over the deck in dir built with opts and log,
+// alongside the render the handler serves.
+func nonceHandler(t *testing.T, dir string, opts HandlerOptions, log *slog.Logger) (*DeckHandler, *RenderedDeck) {
+	t.Helper()
+
+	deck, err := LoadDeck(dir)
+	if err != nil {
+		t.Fatalf("the deck did not load: %v", err)
+	}
+
+	theme, err := LoadTheme(deck.Presentation.Theme, dir)
+	if err != nil {
+		deck.Close()
+
+		t.Fatalf("the theme did not load: %v", err)
+	}
+
+	opts.Log = log
+
+	handler, err := Handler(deck, theme, opts)
+	if err != nil {
+		deck.Close()
+
+		t.Fatalf("the handler was not built: %v", err)
+	}
+
+	t.Cleanup(func() { handler.Close() })
+
+	rendered, err := RenderDeck(deck, theme, handler.renderOptions())
+	if err != nil {
+		t.Fatalf("the deck did not render: %v", err)
+	}
+
+	return handler, rendered
+}
+
+// withNonce is text with nonce written after every <script it holds, which is
+// the page a nonce is served on for text holding no slide.
+func withNonce(text string, nonce string) string {
+	return strings.ReplaceAll(text, "<script", `<script nonce="`+nonce+`"`)
+}
+
+// TestHandlerWritesTheNonceOntoItsOwnScripts pins that every script element the
+// page template writes carries the request's nonce right after <script, in every
+// mode, with and without the reload script, and that the page is otherwise the
+// one rendered.
+func TestHandlerWritesTheNonceOntoItsOwnScripts(t *testing.T) {
+	cases := []struct {
+		name    string
+		opts    HandlerOptions
+		scripts int
+	}{
+		{name: "board", opts: HandlerOptions{}, scripts: 5},
+		{name: "events", opts: HandlerOptions{EventsURL: "/events"}, scripts: 6},
+		{name: "live", opts: HandlerOptions{Live: true}, scripts: 6},
+	}
+
+	nonces := []string{"AAAAAAAAAAAAAAAAAAAAAA==", "bm9uY2Utb25lLWZvci10ZXN0"}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.opts.Nonce = nonceFromQuery
+			tc.opts.ColorMode = modeFromQuery
+
+			handler, rendered := nonceHandler(t, writeDeck(t), tc.opts, handlerLogger())
+
+			for _, mode := range []string{"light", "dark", "auto"} {
+				for i, nonce := range nonces {
+					body := get(t, handler, "/?m="+mode+"&n="+url.QueryEscape(nonce)).Body.String()
+
+					if got := strings.Count(body, "<script"); got != tc.scripts {
+						t.Fatalf("mode %s: the page holds %d scripts, want %d", mode, got, tc.scripts)
+					}
+
+					if got := strings.Count(body, `<script nonce="`+nonce+`"`); got != tc.scripts {
+						t.Errorf("mode %s: %d of %d scripts carry the nonce", mode, got, tc.scripts)
+					}
+
+					if strings.Contains(body, nonces[1-i]) {
+						t.Errorf("mode %s: the page carries another request's nonce", mode)
+					}
+
+					want := strings.Replace(rendered.HTML, htmlTag, colorModeTag(mode), 1)
+					if strings.ReplaceAll(body, ` nonce="`+nonce+`"`, "") != want {
+						t.Errorf("mode %s: the page is not the rendered one with the nonce written onto its scripts", mode)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestHandlerKeepsTheNonceOffASlide pins that a slide's own scripts never carry
+// the nonce, whether they copy the page's own byte for byte or leave an
+// attribute open at the end of the slide for the page's next script to land in.
+// The last slide leaves one open, and the nonce appears nowhere after the head,
+// so the text that attribute runs on into holds none.
+func TestHandlerKeepsTheNonceOffASlide(t *testing.T) {
+	slides := []deckFile{
+		{name: "03-alert.md", body: "---\npage_style: content\n---\n\n# Alert\n\n<script>alert(1)</script>\n"},
+		{name: "04-copy.md", body: "---\npage_style: content\n---\n\n# Copy\n\n<script src=\"reveal/reveal.js\"></script>\n"},
+		{name: "05-double.md", body: "---\npage_style: content\n---\n\n# Double\n\n<script src=\"https://evil/x.js\" x=\"\n"},
+		{name: "06-single.md", body: "---\npage_style: content\n---\n\n# Single\n\n<script src='https://evil/x.js' x='\n"},
+		{name: "07-bare.md", body: "---\npage_style: content\n---\n\n# Bare\n\n<script src=https://evil/x.js x=y\n"},
+		{name: "08-title.md", body: "---\npage_style: content\n---\n\n# Title\n\n<div title='\n"},
+	}
+
+	nonce := "c2xpZGUtbm9uY2UtdGVzdA=="
+
+	for _, live := range []bool{false, true} {
+		opts := HandlerOptions{Live: live, Nonce: nonceFromQuery, ColorMode: modeFromQuery}
+
+		handler, rendered := nonceHandler(t, writeDeck(t, slides...), opts, handlerLogger())
+
+		for _, held := range []string{
+			"<script>alert(1)</script>",
+			`<script src="https://evil/x.js" x="`,
+			`<script src='https://evil/x.js' x='`,
+			`<script src=https://evil/x.js x=y`,
+		} {
+			if !strings.Contains(rendered.sections, held) {
+				t.Fatalf("live %t: the sections do not hold %s", live, held)
+			}
+		}
+
+		last := strings.LastIndex(rendered.sections, "<section ")
+		if last < 0 || !strings.Contains(rendered.sections[last:], "<div title='") {
+			t.Fatalf("live %t: the last slide does not end in the open attribute", live)
+		}
+
+		own := strings.Count(rendered.head, "<script") + strings.Count(rendered.tail, "<script")
+
+		for _, mode := range []string{"light", "dark", "auto"} {
+			body := get(t, handler, "/?m="+mode+"&n="+nonce).Body.String()
+
+			head := withNonce(strings.Replace(rendered.head, htmlTag, colorModeTag(mode), 1), nonce)
+			tail := withNonce(rendered.tail, nonce)
+
+			if body != head+rendered.sections+tail {
+				t.Fatalf("live %t mode %s: the page is not its own head and tail with the nonce around the sections as rendered", live, mode)
+			}
+
+			if sections := body[len(head) : len(body)-len(tail)]; strings.Contains(sections, "nonce=") {
+				t.Errorf("live %t mode %s: a slide carries a nonce", live, mode)
+			}
+
+			if strings.Contains(body[len(head):], nonce) {
+				t.Errorf("live %t mode %s: the nonce appears after the head, where an open attribute can take it", live, mode)
+			}
+
+			if got := strings.Count(body, `nonce="`+nonce+`"`); got != own {
+				t.Errorf("live %t mode %s: %d elements carry the nonce, want the page's own %d", live, mode, got, own)
+			}
+
+			if strings.Count(body, "<script") <= own {
+				t.Errorf("live %t mode %s: the slides' scripts are missing from the page", live, mode)
+			}
+		}
+	}
+}
+
+// TestHandlerServesThePageAsRenderedWithoutAUsableNonce pins that no Nonce, an
+// empty answer and an answer the handler will not write all serve the bytes the
+// render made, and that only the last is logged, by its length alone.
+func TestHandlerServesThePageAsRenderedWithoutAUsableNonce(t *testing.T) {
+	dir := writeDeck(t)
+
+	plain, rendered := nonceHandler(t, dir, HandlerOptions{Live: true}, handlerLogger())
+
+	if body := get(t, plain, "/?n=AAAAAAAAAAAAAAAAAAAAAA==").Body.String(); body != rendered.HTML {
+		t.Error("a handler with no Nonce changed the page it serves")
+	}
+
+	var logged bytes.Buffer
+
+	handler, rendered := nonceHandler(t, dir, HandlerOptions{Live: true, Nonce: nonceFromQuery}, slog.New(slog.NewTextHandler(&logged, nil)))
+
+	cases := map[string]bool{
+		"":                            false,
+		"AAAAAAAAAAAAAAA":             true,
+		"AAAAAAAA AAAAAAAAAAAAA":      true,
+		`AAAAAAAAAAAAAAAA" onload="x`: true,
+		"AAAAAAAAAAAAAAAA><script>":   true,
+		"AAAAAAAAAAAAAAAA" + string(rune(0xe9)) + "AAAAAA": true,
+	}
+
+	for nonce, warned := range cases {
+		logged.Reset()
+
+		body := get(t, handler, "/?n="+url.QueryEscape(nonce)).Body.String()
+
+		if body != rendered.HTML {
+			t.Errorf("nonce %q changed the page it serves", nonce)
+		}
+
+		if got := strings.Contains(logged.String(), "level=WARN"); got != warned {
+			t.Errorf("nonce %q logged a warning %t, want %t: %s", nonce, got, warned, logged.String())
+		}
+
+		if warned && !strings.Contains(logged.String(), fmt.Sprintf("length=%d", len(nonce))) {
+			t.Errorf("nonce %q was not logged by its length: %s", nonce, logged.String())
+		}
+
+		if nonce != "" && strings.Contains(logged.String(), nonce) {
+			t.Errorf("nonce %q was logged: %s", nonce, logged.String())
+		}
+	}
+}
+
+func TestValidNonce(t *testing.T) {
+	cases := map[string]bool{
+		"":                            false,
+		"AAAAAAAAAAAAAAA":             false,
+		"AAAAAAAAAAAAAAAA":            true,
+		"abcXYZ0189+/_-AA":            true,
+		"AAAAAAAAAAAAAAA=":            true,
+		"AAAAAAAAAAAAAAAA==":          true,
+		"AAAAAAAAAAAAAAAA===":         false,
+		"AAAAAAAA=AAAAAAA":            false,
+		"=AAAAAAAAAAAAAAA":            false,
+		"================":            false,
+		"AAAAAAAAAAAAAAAA\"":          false,
+		"AAAAAAAAAAAAAAAA ":           false,
+		"AAAAAAAAAAAAAAAA<":           false,
+		"AAAAAAAAAAAAAAAA\n":          false,
+		"AAAAAAAAAAAAAAAA&quot;AAAAA": false,
+	}
+
+	for nonce, want := range cases {
+		if got := validNonce(nonce); got != want {
+			t.Errorf("validNonce(%q) is %t, want %t", nonce, got, want)
+		}
 	}
 }

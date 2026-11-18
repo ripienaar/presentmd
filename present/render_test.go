@@ -641,8 +641,8 @@ func TestRenderDeckPage(t *testing.T) {
 		`<link rel="stylesheet" href="reveal/reset.css">`,
 		`<link rel="stylesheet" href="reveal/reveal.css">`,
 		`<link rel="stylesheet" href="theme/theme.css">`,
-		`<script src="reveal/reveal.js"></script>`,
-		`<script src="reveal/plugin/notes.js"></script>`,
+		`<script defer src="reveal/reveal.js"></script>`,
+		`<script defer src="reveal/plugin/notes.js"></script>`,
 		`--font-body: "IBM Plex Sans"`,
 		`--font-heading: "IBM Plex Sans Condensed"`,
 		`--font-mono: "IBM Plex Mono"`,
@@ -660,6 +660,65 @@ func TestRenderDeckPage(t *testing.T) {
 
 	if strings.Contains(out.HTML, "EventSource") {
 		t.Error("a rendering with no events URL carries a reload script")
+	}
+}
+
+// TestRenderDeckScriptsAreInTheHead pins that every script the page carries is in
+// the head, ahead of the slides, and that nothing after the slides is a script. A
+// slide ending in an attribute it never closes reads the text after it as that
+// attribute's value, so a script there would hand its nonce to the slide.
+// Reveal and the notes plugin load deferred, and everything that calls reveal
+// waits for DOMContentLoaded, which a deferred script runs ahead of.
+func TestRenderDeckScriptsAreInTheHead(t *testing.T) {
+	deck, err := LoadDeck(deckDir)
+	if err != nil {
+		t.Fatalf("cannot load the deck fixture: %v", err)
+	}
+	defer deck.Close()
+
+	cases := map[string]struct {
+		opts    RenderOptions
+		scripts int
+	}{
+		"plain":  {opts: RenderOptions{}, scripts: 5},
+		"events": {opts: RenderOptions{EventsURL: "events"}, scripts: 6},
+	}
+
+	for name, tc := range cases {
+		out, err := RenderDeck(deck, loadDefaultTheme(t), tc.opts)
+		if err != nil {
+			t.Fatalf("%s: the deck did not render: %v", name, err)
+		}
+
+		if strings.Contains(out.tail, "<script") {
+			t.Errorf("%s: the page writes a script after the slides: %q", name, out.tail)
+		}
+
+		if got := strings.Count(out.head, "<script"); got != tc.scripts {
+			t.Errorf("%s: the head holds %d scripts, want %d", name, got, tc.scripts)
+		}
+
+		head, _, ok := strings.Cut(out.HTML, "</head>")
+		if !ok || strings.Count(head, "<script") != tc.scripts || !strings.HasPrefix(out.head, head) {
+			t.Errorf("%s: the scripts are not inside the head element", name)
+		}
+
+		reveal := strings.Index(out.head, `<script defer src="reveal/reveal.js"></script>`)
+		notes := strings.Index(out.head, `<script defer src="reveal/plugin/notes.js"></script>`)
+
+		if reveal < 0 || notes < reveal {
+			t.Errorf("%s: reveal and then the notes plugin are not loaded deferred", name)
+		}
+
+		// Every inline script but the color mode one runs once the slides are
+		// parsed and reveal is loaded.
+		if got := strings.Count(out.head, `document.addEventListener("DOMContentLoaded", function () {`); got != tc.scripts-3 {
+			t.Errorf("%s: %d scripts wait for DOMContentLoaded, want %d", name, got, tc.scripts-3)
+		}
+
+		if strings.Index(out.head, "Reveal.initialize(") < notes {
+			t.Errorf("%s: reveal is initialized ahead of the scripts it needs", name)
+		}
 	}
 }
 
@@ -681,7 +740,7 @@ func TestRenderDeckPageOptions(t *testing.T) {
 		t.Error("the reload script does not listen where it was told to")
 	}
 
-	if !strings.Contains(out.HTML, `<script src="static/reveal/reveal.js"></script>`) {
+	if !strings.Contains(out.HTML, `<script defer src="static/reveal/reveal.js"></script>`) {
 		t.Error("the asset prefix did not reach the reveal reference")
 	}
 

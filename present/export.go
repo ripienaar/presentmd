@@ -413,7 +413,7 @@ func linkElement(ref string) string {
 }
 
 func scriptSrcElement(ref string) string {
-	return `<script src="` + ref + `"></script>`
+	return `<script defer src="` + ref + `"></script>`
 }
 
 // inlineStyle is a stylesheet as the page carries it, written out where its text
@@ -427,6 +427,11 @@ func inlineStyle(css []byte, name string) string {
 	return "<style>\n" + string(css) + "\n</style>"
 }
 
+// inlineScript is a script as the page carries it. A data URI stays deferred
+// like the reference it replaces. Text written out runs where it stands in the
+// head, before the body is parsed, which suits reveal and its notes plugin: each
+// only defines its global as it loads, and reaches for the page when
+// Reveal.initialize runs on DOMContentLoaded.
 func inlineScript(js []byte, name string) string {
 	if scriptBreakRe.Match(js) {
 		return scriptSrcElement(dataURIOf(contentType(name), js))

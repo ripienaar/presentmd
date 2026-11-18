@@ -2,6 +2,7 @@ package present
 
 import (
 	"bytes"
+	"io"
 	"io/fs"
 	"log/slog"
 	"mime"
@@ -58,7 +59,20 @@ type HandlerOptions struct {
 	// ColorModeCookie is the cookie the page's T key writes the mode to, which is
 	// what a ColorMode function reads back. Empty writes no cookie.
 	ColorModeCookie string
+	// Nonce names the Content-Security-Policy nonce of each request's page, for a
+	// host whose policy allows scripts by nonce. It is written as nonce="..." into
+	// every script element the page template writes, and never into a slide's
+	// own HTML, so a script a slide carries stays outside the policy whatever it
+	// looks like. An empty answer serves the page as rendered, and so does one
+	// shorter than 16 characters or outside the base64 alphabet, which is logged.
+	// A nil function serves the page as rendered.
+	Nonce func(r *http.Request) string
 }
+
+// minNonceLength is the shortest nonce the handler writes onto a page. A nonce
+// is 128 bits of randomness or more, which base64 writes in 22 characters, so a
+// shorter value is a host's mistake rather than a nonce.
+const minNonceLength = 16
 
 // DeckHandler serves one deck: the page at the root of its space, reveal and the
 // theme beside it, and the deck's own files under an asset prefix.
@@ -83,18 +97,115 @@ type DeckHandler struct {
 	// serving the page as rendered.
 	colorMode       func(r *http.Request) string
 	colorModeCookie string
+	// nonce names the script nonce of a request's page, and is nil for a handler
+	// serving the page as rendered.
+	nonce func(r *http.Request) string
 
 	mu    sync.RWMutex
 	deck  *Deck
 	theme *Theme
-	page  []byte
-	// pageLight and pageDark are the page with each forced mode written onto it,
-	// built on every update when colorMode is set so a request picks one rather
-	// than copying the page.
-	pageLight []byte
-	pageDark  []byte
+	page  *pageParts
+	// pageLight and pageDark are the page with each forced mode written onto its
+	// head, built on every update when colorMode is set so a request picks one
+	// rather than copying the page. They share the sections and the tail with
+	// page.
+	pageLight *pageParts
+	pageDark  *pageParts
 	assets    []string
 	problems  []Problem
+}
+
+// pageParts is a rendered page as the handler serves it. The head and the tail
+// are split after every "<script" they hold, so a nonce is written between two
+// pieces rather than found by searching the page on every request. Neither holds
+// text a deck controls, which is what lets every "<script" in them be taken for
+// one of the page template's own script elements. The sections are written as
+// they were rendered.
+type pageParts struct {
+	head     [][]byte
+	sections []byte
+	tail     [][]byte
+}
+
+// scriptOpen is the text a nonce is written after.
+const scriptOpen = "<script"
+
+// splitAfterScript is text cut after every scriptOpen it holds. Every piece but
+// the last ends with one, and the pieces joined are text again.
+func splitAfterScript(text string) [][]byte {
+	var pieces [][]byte
+
+	for {
+		at := strings.Index(text, scriptOpen)
+		if at < 0 {
+			return append(pieces, []byte(text))
+		}
+
+		pieces = append(pieces, []byte(text[:at+len(scriptOpen)]))
+		text = text[at+len(scriptOpen):]
+	}
+}
+
+// write writes the page to w with attribute after every scriptOpen of the head
+// and the tail. An empty attribute writes the page as rendered.
+func (p *pageParts) write(w io.Writer, attribute []byte) error {
+	err := writePieces(w, p.head, attribute)
+	if err != nil {
+		return err
+	}
+
+	_, err = w.Write(p.sections)
+	if err != nil {
+		return err
+	}
+
+	return writePieces(w, p.tail, attribute)
+}
+
+func writePieces(w io.Writer, pieces [][]byte, attribute []byte) error {
+	for i, piece := range pieces {
+		_, err := w.Write(piece)
+		if err != nil {
+			return err
+		}
+
+		if len(attribute) == 0 || i == len(pieces)-1 {
+			continue
+		}
+
+		_, err = w.Write(attribute)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// validNonce reports whether nonce is one the handler writes onto a page: at
+// least minNonceLength characters of the base64 alphabet, the standard one or
+// the URL one, with at most two = of padding at its end, which is the nonce a
+// Content-Security-Policy source can name. Nothing else can reach an attribute
+// value.
+func validNonce(nonce string) bool {
+	if len(nonce) < minNonceLength {
+		return false
+	}
+
+	for range 2 {
+		nonce = strings.TrimSuffix(nonce, "=")
+	}
+
+	for _, c := range []byte(nonce) {
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		case c == '+', c == '/', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 // Handler renders deck through theme and returns the handler that serves it. The
@@ -115,6 +226,7 @@ func Handler(deck *Deck, theme *Theme, opts HandlerOptions) (*DeckHandler, error
 		themeName:       opts.Theme,
 		colorMode:       opts.ColorMode,
 		colorModeCookie: opts.ColorModeCookie,
+		nonce:           opts.Nonce,
 	}
 
 	if opts.Live {
@@ -154,13 +266,17 @@ func (h *DeckHandler) Update(deck *Deck, theme *Theme) error {
 	problems = append(problems, deck.Problems...)
 	problems = append(problems, rendered.Problems...)
 
-	page := []byte(rendered.HTML)
+	page := &pageParts{
+		head:     splitAfterScript(rendered.head),
+		sections: []byte(rendered.sections),
+		tail:     splitAfterScript(rendered.tail),
+	}
 
-	var light, dark []byte
+	var light, dark *pageParts
 
 	if h.colorMode != nil {
-		light = stampColorMode(page, colorModeLight)
-		dark = stampColorMode(page, colorModeDark)
+		light = &pageParts{head: splitAfterScript(stampColorMode(rendered.head, colorModeLight)), sections: page.sections, tail: page.tail}
+		dark = &pageParts{head: splitAfterScript(stampColorMode(rendered.head, colorModeDark)), sections: page.sections, tail: page.tail}
 	}
 
 	h.mu.Lock()
@@ -249,15 +365,40 @@ func (h *DeckHandler) renderOptions() RenderOptions {
 	return RenderOptions{EventsURL: eventsRef, ColorModeCookie: h.colorModeCookie}
 }
 
-// stampColorMode is the page with a forced mode written onto its opening tag.
-func stampColorMode(page []byte, mode string) []byte {
-	return bytes.Replace(page, []byte(htmlTag), []byte(colorModeTag(mode)), 1)
+// stampColorMode is the page's head with a forced mode written onto its opening
+// tag.
+func stampColorMode(head string, mode string) string {
+	return strings.Replace(head, htmlTag, colorModeTag(mode), 1)
+}
+
+// scriptNonce is the attribute a request's page carries on its own scripts, and
+// is empty for a page served as rendered. A value the handler will not write is
+// logged by its length alone, since a nonce is a secret for as long as its page
+// is open.
+func (h *DeckHandler) scriptNonce(r *http.Request) []byte {
+	if h.nonce == nil {
+		return nil
+	}
+
+	nonce := h.nonce(r)
+	if nonce == "" {
+		return nil
+	}
+
+	if !validNonce(nonce) {
+		h.log.Warn("Refused a script nonce that is not base64 of at least 16 characters", "length", len(nonce))
+
+		return nil
+	}
+
+	return []byte(` nonce="` + nonce + `"`)
 }
 
 // handlePage answers with the cached page, in the mode the request names when
-// the handler was given a ColorMode. The page varies by request then, and it is
-// never stored either way, so the back button does not bring back a page in the
-// mode it was first served in.
+// the handler was given a ColorMode and with the nonce it names when it was
+// given a Nonce. The page varies by request then, and it is never stored either
+// way, so the back button does not bring back a page in the mode it was first
+// served in.
 func (h *DeckHandler) handlePage(w http.ResponseWriter, r *http.Request) {
 	h.mu.RLock()
 	page := h.page
@@ -278,7 +419,7 @@ func (h *DeckHandler) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 
-	_, err := w.Write(page)
+	err := page.write(w, h.scriptNonce(r))
 	if err != nil {
 		h.log.Debug("Cannot write the deck page", "error", err)
 	}
