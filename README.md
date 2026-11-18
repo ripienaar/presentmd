@@ -516,6 +516,14 @@ A load returns an error when there is no deck to hold a problem against:
 `LoadDeck` also returns `ErrOpenDeck` for a directory it cannot open. Everything
 else is on `deck.Problems`.
 
+A host serving a deck through `present.Handler` under a nonce Content Security
+Policy sets `HandlerOptions.Nonce`, which writes each request's nonce onto
+presentmd's own scripts and never onto a slide's. The policy then needs
+`script-src 'nonce-N'` plus `present.SpeakerViewScriptHash()` for the speaker
+view, `style-src 'self' 'unsafe-inline'` for the page's own style blocks, the
+code colors and the speaker view, `frame-src 'self'` for its slide previews and
+`connect-src 'self'` for live reload.
+
 ## License
 
 presentmd is under the Apache License 2.0, see `LICENSE`.
